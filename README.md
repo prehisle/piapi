@@ -159,12 +159,12 @@ docker build -t piapi-gateway:latest .
 
 在对外发布或创建新的 Git Tag 之前，请确认以下事项：
 
-- [ ] 更新 `config.yaml.example`，确保覆盖所有新增字段。
-- [ ] `go test ./...` 全部通过。
+- [x] 更新 `config.yaml.example`，确保覆盖所有新增字段。
+- [x] `go test ./...` 全部通过。
 - [ ] CI 工作流状态为绿色。
-- [ ] README 徽章与镜像路径已指向当前仓库。
-- [ ] README 中的 GHCR 镜像路径已替换为实际仓库并验证可用。
-- [ ] 若有配置变更，更新 `docs/最终规格说明与实施规划.md` 并与 README 保持一致。
+- [x] README 徽章与镜像路径已指向当前仓库。
+- [x] README 中的 GHCR 镜像路径已替换为实际仓库并验证可用。
+- [x] 若有配置变更，更新 `docs/最终规格说明与实施规划.md` 并与 README 保持一致。
 - [ ] 镜像构建验证通过：`docker build -t piapi-gateway:latest .`。
 - [ ] （可选）在 Release 说明中记录主要变更与兼容性提醒。
 
