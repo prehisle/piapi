@@ -36,8 +36,14 @@ func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			path = "/admin.html"
 		}
 
+		// Remove leading slash for embed.FS (it requires relative paths)
+		cleanPath := path
+		if len(cleanPath) > 0 && cleanPath[0] == '/' {
+			cleanPath = cleanPath[1:]
+		}
+
 		// Try to open the file
-		f, err := h.staticFS.Open(path)
+		f, err := h.staticFS.Open(cleanPath)
 		if err != nil {
 			// If it's a static asset (starts with /_next or is a known static file), return 404
 			if isStaticAsset(path) {
@@ -45,7 +51,7 @@ func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			// Otherwise, serve admin.html for SPA routing (client-side routes)
-			f, err = h.staticFS.Open("/admin.html")
+			f, err = h.staticFS.Open("admin.html")
 			if err != nil {
 				http.Error(w, "Not Found", http.StatusNotFound)
 				return
@@ -64,7 +70,7 @@ func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if stat.IsDir() {
 			// Serve admin.html for directories
 			f.Close()
-			f, err = h.staticFS.Open("/admin.html")
+			f, err = h.staticFS.Open("admin.html")
 			if err != nil {
 				http.Error(w, "Not Found", http.StatusNotFound)
 				return
