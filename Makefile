@@ -6,7 +6,7 @@ LISTEN_ADDR ?= :9200
 ADMIN_UI_DIR := web/admin
 ADMIN_UI_DIST := internal/adminui/dist
 
-.PHONY: all build test run docker-build clean admin-install admin-build admin-clean
+.PHONY: all build build-skip-admin test run docker-build clean admin-install admin-build admin-clean
 
 all: build
 
