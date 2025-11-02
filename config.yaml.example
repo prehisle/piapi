@@ -1,0 +1,40 @@
+providers:
+  - name: provider-alpha
+    apiKeys:
+      main-key: sk-alpha-xxx
+      backup-key: sk-alpha-backup
+    services:
+      - type: cx
+        baseUrl: https://api.provider-alpha.com/v1/engines
+        auth:
+          mode: header
+          name: Authorization
+          prefix: "Bearer "
+      - type: cc
+        baseUrl: https://api.provider-alpha.com/v1/claude
+        auth:
+          mode: header
+          name: x-api-key
+  - name: provider-beta
+    apiKeys:
+      prod-key: sk-beta-yyy
+    services:
+      - type: cx
+        baseUrl: https://api.provider-beta.com/codex
+        auth:
+          mode: query
+          name: api_key
+
+users:
+  - name: Alice
+    apiKey: piapi-user-alice
+    providerName: provider-alpha
+    providerKeyName: main-key
+  - name: Bob
+    apiKey: piapi-user-bob
+    providerName: provider-alpha
+    providerKeyName: backup-key
+  - name: Carol
+    apiKey: piapi-user-carol
+    providerName: provider-beta
+    providerKeyName: prod-key

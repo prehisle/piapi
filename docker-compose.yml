@@ -1,0 +1,14 @@
+version: '3.9'
+
+services:
+  piapi:
+    build: .
+    image: piapi-gateway:latest
+    container_name: piapi-gateway
+    ports:
+      - "9200:9200"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    environment:
+      - TZ=UTC
+    restart: unless-stopped
