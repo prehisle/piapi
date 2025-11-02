@@ -37,7 +37,7 @@ echo ""
 
 # Test admin UI
 echo "3. Admin UI (HTML):"
-curl -s http://localhost:19200/admin/ | grep -q "<!doctype html" && echo "✅ HTML served" || echo "❌ Failed"
+curl -s http://localhost:19200/admin/ | grep -iq "<!doctype html" && echo "✅ HTML served" || echo "❌ Failed"
 
 # Test static assets
 echo "4. Static assets (_next):"
