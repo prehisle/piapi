@@ -127,3 +127,19 @@ docker build -t piapi-gateway:latest .
 * 补充更丰富的集成测试与负载测试脚本。
 * 在 Dockerfile 与部署脚本中封装运行环境（见待完成的实施规划 Phase 4）。
 ```
+
+## 持续集成
+
+仓库默认集成 GitHub Actions：
+
+```yaml
+.github/workflows/ci.yml
+```
+
+当推送到 `main` 或创建 PR 时会自动执行 `go test ./...` 与 `go build ./cmd/piapi`，确保核心逻辑在合并前通过编译与测试。完成初次推送后，可在 README 顶部添加 CI 状态徽章，例如：
+
+```markdown
+![CI](https://github.com/<your-org>/piapi/actions/workflows/ci.yml/badge.svg)
+```
+
+将 `<your-org>` 替换为实际 GitHub 组织或用户名。
