@@ -4,3 +4,14 @@ bin/
 *.swp
 .DS_Store
 config.yaml
+tmp/
+piapi
+
+# Frontend build artifacts
+node_modules/
+web/admin/node_modules/
+web/admin/.next/
+web/admin/out/
+
+# Embedded admin UI (copied from web/admin/out)
+internal/adminui/dist/

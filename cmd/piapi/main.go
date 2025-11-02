@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"piapi/internal/adminapi"
+	"piapi/internal/adminui"
 	"piapi/internal/config"
 	"piapi/internal/logging"
 	"piapi/internal/metrics"
@@ -50,6 +52,11 @@ func main() {
 		Logger: baseLogger.Named("gateway"),
 	}
 
+	adminToken := os.Getenv("PIAPI_ADMIN_TOKEN")
+	if adminToken == "" {
+		sugar.Infow("admin api disabled (PIAPI_ADMIN_TOKEN not set)")
+	}
+
 	mux := http.NewServeMux()
 	mux.Handle("/piapi/", server.RequestIDMiddleware(gateway))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -58,11 +65,26 @@ func main() {
 	})
 	mux.Handle("/metrics", metrics.Handler())
 
+	if adminToken != "" {
+		adminLogger := baseLogger.Named("admin")
+		adminHandler := adminapi.NewHandler(manager, *configPath, adminToken, adminLogger)
+		mux.Handle("/admin/api/", server.RequestIDMiddleware(http.StripPrefix("/admin/api", adminHandler)))
+
+		// Serve admin UI
+		uiHandler, err := adminui.NewHandler()
+		if err != nil {
+			sugar.Warnw("failed to initialize admin UI", "error", err)
+		} else {
+			mux.Handle("/admin/", uiHandler)
+			sugar.Infow("admin UI enabled at /admin")
+		}
+	}
+
 	srv := &http.Server{
 		Addr:         *listenAddr,
 		Handler:      mux,
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 0,
+		WriteTimeout: 300 * time.Second, // 5 minutes for streaming responses
 		IdleTimeout:  2 * time.Minute,
 	}
 

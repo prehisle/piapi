@@ -131,6 +131,22 @@ docker run --rm \
   * `piapi_config_reloads_total{result="success"}`
 * **结构化日志**: 使用 zap JSON 输出，字段包含 `request_id`, `user`, `service_type`, `upstream_provider` 等。
 
+### 5. 管理后台 API（MVP）
+
+为了支撑管理后台 UI，服务内置了一个受保护的配置管理 API，默认关闭。设置环境变量 `PIAPI_ADMIN_TOKEN` 后生效：
+
+```bash
+PIAPI_ADMIN_TOKEN='super-secret-token' go run ./cmd/piapi --config config.yaml --listen :9200
+```
+
+所有管理接口都位于 `/admin/api` 下，并要求通过 `Authorization: Bearer <token>` 进行认证。当前提供以下操作：
+
+* `GET /admin/api/config`：返回结构化 JSON 配置快照（与 `config.yaml` 字段一致）。
+* `GET /admin/api/config/raw`：以 `application/x-yaml` 形式返回原始 `config.yaml` 内容。
+* `PUT /admin/api/config/raw`：提交完整 YAML 内容以原子方式覆盖配置文件。请求体必须通过后端校验，写入失败会自动回滚到旧配置。
+
+更新成功后，后端会立即重新加载配置，现有 watcher 和运行时状态会同步刷新。建议在 CI/CD 中通过自定义脚本调用这些接口并记录审计日志。
+
 ## 构建与测试
 
 ```bash
