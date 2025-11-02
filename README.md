@@ -1,4 +1,4 @@
-# piapi ![CI](https://github.com/<your-org>/piapi/actions/workflows/ci.yml/badge.svg)
+# piapi ![CI](https://github.com/prehisle/piapi/actions/workflows/ci.yml/badge.svg)
 
 piapi 是一个面向小型开发团队的极简 LLM 编码助手网关。它提供统一的 `/piapi/<service_type>` 接口，将请求安全地转发到配置文件中声明的上游服务，并支持热加载、结构化日志与 Prometheus 监控指标。
 
@@ -92,19 +92,19 @@ docker compose up --build
 
 ### 2.2 从 GHCR 获取镜像
 
-GitHub Actions 会在推送到 `main` 或创建符合 `v*` 模式的标签时，自动将容器镜像发布到 `ghcr.io/<your-org>/piapi`。
+GitHub Actions 会在推送到 `main` 或创建符合 `v*` 模式的标签时，自动将容器镜像发布到 `ghcr.io/prehisle/piapi`。
 
 ```bash
-docker pull ghcr.io/<your-org>/piapi:main    # 主分支镜像
-docker pull ghcr.io/<your-org>/piapi:v1.0.0  # 版本标签镜像
+docker pull ghcr.io/prehisle/piapi:main    # 主分支镜像
+docker pull ghcr.io/prehisle/piapi:v1.0.0  # 版本标签镜像
 
 docker run --rm \
   -p 9200:9200 \
   -v "$(pwd)/config.yaml:/app/config.yaml:ro" \
-  ghcr.io/<your-org>/piapi:main --listen :9200
+  ghcr.io/prehisle/piapi:main --listen :9200
 ```
 
-记得将 `<your-org>` 替换为实际的 GitHub 组织或用户名。默认凭据使用仓库的 `GITHUB_TOKEN`，无需额外配置；如需跨仓库或组织推送，可改用拥有 `packages:write` 权限的 PAT。
+默认凭据使用仓库的 `GITHUB_TOKEN`，无需额外配置；如需跨仓库或组织推送，可改用拥有 `packages:write` 权限的 PAT。
 
 ### 3. 热加载配置
 
@@ -148,7 +148,7 @@ docker build -t piapi-gateway:latest .
 
 仓库默认集成 GitHub Actions，在 `.github/workflows/ci.yml` 中定义。
 
-当推送到 `main` 或创建 PR 时会自动执行 `go test ./...` 与 `go build ./cmd/piapi`，确保核心逻辑在合并前通过编译与测试。完成初次推送后，请将 README 顶部徽章中的 `<your-org>` 替换为实际的 GitHub 组织或用户名，以展示 CI 状态。
+当推送到 `main` 或创建 PR 时会自动执行 `go test ./...` 与 `go build ./cmd/piapi`，确保核心逻辑在合并前通过编译与测试。徽章与镜像路径已指向 `prehisle/piapi`，如迁移仓库请同步更新相应链接。
 
 > 注意：为了允许工作流推送镜像到 GHCR，请在仓库或组织的 `Settings -> Actions -> General` 中将 Workflow permissions 设置为 “Read and write permissions”。
 
@@ -159,8 +159,8 @@ docker build -t piapi-gateway:latest .
 - [ ] 更新 `config.yaml.example`，确保覆盖所有新增字段。
 - [ ] `go test ./...` 全部通过。
 - [ ] CI 工作流状态为绿色。
-- [ ] README 已替换徽章中的 `<your-org>`。
-- [ ] README 中的 GHCR 镜像路径已替换 `<your-org>` 并验证可用。
+- [ ] README 徽章与镜像路径已指向当前仓库。
+- [ ] README 中的 GHCR 镜像路径已替换为实际仓库并验证可用。
 - [ ] 若有配置变更，更新 `docs/最终规格说明与实施规划.md` 并与 README 保持一致。
 - [ ] 镜像构建验证通过：`docker build -t piapi-gateway:latest .`。
 - [ ] （可选）在 Release 说明中记录主要变更与兼容性提醒。
@@ -174,6 +174,6 @@ git push origin v1.0.0
 
 # GitHub Actions 将自动：
 # 1. 运行测试
-# 2. 构建并推送 ghcr.io/<your-org>/piapi:v1.0.0
-# 3. 推送 ghcr.io/<your-org>/piapi:sha-<commit> 等辅助标签
+# 2. 构建并推送 ghcr.io/prehisle/piapi:v1.0.0
+# 3. 推送 ghcr.io/prehisle/piapi:sha-<commit> 等辅助标签
 ```
