@@ -178,25 +178,36 @@ func parse(b []byte) (*resolvedConfig, error) {
 				Type:    svcType,
 				BaseURL: baseURL,
 			}
+
+			auth := AuthConfig{
+				Mode:   AuthModeHeader,
+				Name:   "Authorization",
+				Prefix: "Bearer ",
+			}
+
 			if svc.Auth != nil {
-				auth := *svc.Auth
-				mode := strings.TrimSpace(auth.Mode)
-				if mode == "" {
-					mode = AuthModeHeader
+				auth = *svc.Auth
+				auth.Mode = strings.TrimSpace(auth.Mode)
+				if auth.Mode == "" {
+					auth.Mode = AuthModeHeader
 				}
-				if mode != AuthModeHeader && mode != AuthModeQuery {
+				if auth.Mode != AuthModeHeader && auth.Mode != AuthModeQuery {
 					return nil, fmt.Errorf("provider '%s' services[%d]: unsupported auth mode '%s'", name, j, svc.Auth.Mode)
 				}
-				auth.Mode = mode
 				auth.Name = strings.TrimSpace(auth.Name)
 				if auth.Name == "" {
-					return nil, fmt.Errorf("provider '%s' services[%d]: auth.name is required", name, j)
+					if auth.Mode == AuthModeHeader {
+						auth.Name = "Authorization"
+					} else {
+						return nil, fmt.Errorf("provider '%s' services[%d]: auth.name is required", name, j)
+					}
 				}
-				if mode == AuthModeHeader && auth.Prefix == "" {
+				if auth.Mode == AuthModeHeader && strings.TrimSpace(auth.Prefix) == "" {
 					auth.Prefix = "Bearer "
 				}
-				sanitized.Auth = &auth
 			}
+
+			sanitized.Auth = &auth
 			services[svcType] = sanitized
 			sanitizedServices = append(sanitizedServices, sanitized)
 		}

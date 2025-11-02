@@ -26,13 +26,13 @@ providers:
       main-key: sk-alpha-xxx
       backup-key: sk-alpha-backup
     services:
-      - type: cx
+      - type: codex
         baseUrl: https://api.provider-alpha.com/v1/engines
         auth:
           mode: header
           name: Authorization
           prefix: "Bearer "
-      - type: cc
+      - type: claude_code
         baseUrl: https://api.provider-alpha.com/v1/claude
         auth:
           mode: header
@@ -41,7 +41,7 @@ providers:
     apiKeys:
       prod-key: sk-beta-yyy
     services:
-      - type: cx
+      - type: codex
         baseUrl: https://api.provider-beta.com/codex
         auth:
           mode: query
@@ -51,27 +51,27 @@ users:
   - name: Alice
     apiKey: piapi-user-alice
     services:
-      cx:
+      codex:
         providerName: provider-alpha
         providerKeyName: main-key
-      cc:
+      claude_code:
         providerName: provider-alpha
         providerKeyName: main-key
   - name: Bob
     apiKey: piapi-user-bob
     services:
-      cx:
+      codex:
         providerName: provider-alpha
         providerKeyName: backup-key
   - name: Carol
     apiKey: piapi-user-carol
     services:
-      cx:
+      codex:
         providerName: provider-beta
         providerKeyName: prod-key
 ```
 
-默认情况下，`/piapi/<service_type>/<rest>` 的 `<rest>` 会被原样追加到相应 service 的 `baseUrl` 后面；若 `auth` 未显式配置，则自动使用 `Authorization: Bearer <providerKey>`。自 0.2.0 起，用户级路由改为“用户 + 服务类型”粒度，可像示例一样为同一用户的 `cx`、`cc` 分别指定不同的上游。
+默认情况下，`/piapi/<service_type>/<rest>` 的 `<rest>` 会被原样追加到相应 service 的 `baseUrl` 后面；若 `auth` 未显式配置，则自动使用 `Authorization: Bearer <providerKey>`。自 0.2.0 起，用户级路由改为“用户 + 服务类型”粒度，可像示例一样为同一用户的 `codex`、`claude_code` 分别指定不同的上游。
 
 ### 2. 运行服务
 
@@ -86,7 +86,7 @@ curl -X POST \
   -H 'Authorization: Bearer piapi-user-alice' \
   -H 'Content-Type: application/json' \
   --data '{"prompt":"..."}' \
-  http://localhost:9200/piapi/cx/completions
+  http://localhost:9200/piapi/codex/completions
 ```
 
 ### 2.1 使用 Docker Compose
@@ -126,8 +126,8 @@ docker run --rm \
 
 * **健康检查**: `GET /healthz`
 * **指标**: `GET /metrics` (Prometheus 格式)
-  * `piapi_requests_total{service_type="cx",status_class="2xx"}`
-  * `piapi_request_latency_seconds_bucket{service_type="cc",...}`
+  * `piapi_requests_total{service_type="codex",status_class="2xx"}`
+  * `piapi_request_latency_seconds_bucket{service_type="claude_code",...}`
   * `piapi_config_reloads_total{result="success"}`
 * **结构化日志**: 使用 zap JSON 输出，字段包含 `request_id`, `user`, `service_type`, `upstream_provider` 等。
 

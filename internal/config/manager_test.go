@@ -16,9 +16,9 @@ providers:
     apiKeys:
       main-key: test-upstream-key
     services:
-      - type: cx
+      - type: codex
         baseUrl: https://api.example.com/v1
-      - type: cc
+      - type: claude_code
         baseUrl: https://api.example.com/v1/claude
         auth:
           mode: query
@@ -27,7 +27,7 @@ providers:
     apiKeys:
       prod-key: another-upstream
     services:
-      - type: cx
+      - type: codex
         baseUrl: https://beta.example.com/api
         auth:
           mode: header
@@ -37,10 +37,10 @@ users:
   - name: test user
     apiKey: user-secret
     services:
-      cx:
+      codex:
         providerName: provider-alpha
         providerKeyName: main-key
-      cc:
+      claude_code:
         providerName: provider-alpha
         providerKeyName: main-key
 `
@@ -52,7 +52,7 @@ users:
 		t.Fatalf("load config: %v", err)
 	}
 
-	route, err := manager.Resolve("user-secret", "cx")
+	route, err := manager.Resolve("user-secret", "codex")
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -69,14 +69,21 @@ users:
 		t.Fatalf("unexpected base url: %s", route.Service.BaseURL)
 	}
 
-	if got := manager.ListServiceTypes(); len(got) != 2 || got[0] != "cc" || got[1] != "cx" {
+	if route.Service.Auth == nil {
+		t.Fatal("expected default auth configuration for codex service")
+	}
+	if route.Service.Auth.Mode != AuthModeHeader || route.Service.Auth.Name != "Authorization" || route.Service.Auth.Prefix != "Bearer " {
+		t.Fatalf("unexpected default auth: %#v", route.Service.Auth)
+	}
+
+	if got := manager.ListServiceTypes(); len(got) != 2 || got[0] != "claude_code" || got[1] != "codex" {
 		t.Fatalf("unexpected service types: %v", got)
 	}
 
-	// Query auth should be preserved for cc service
-	ccRoute, err := manager.Resolve("user-secret", "cc")
+	// Query auth should be preserved for claude_code service
+	ccRoute, err := manager.Resolve("user-secret", "claude_code")
 	if err != nil {
-		t.Fatalf("resolve cc: %v", err)
+		t.Fatalf("resolve claude_code: %v", err)
 	}
 	if ccRoute.Service.Auth == nil || ccRoute.Service.Auth.Mode != AuthModeQuery || ccRoute.Service.Auth.Name != "api_key" {
 		t.Fatalf("expected query auth configuration, got %#v", ccRoute.Service.Auth)
@@ -90,13 +97,13 @@ providers:
     apiKeys:
       main-key: test-upstream-key
     services:
-      - type: cx
+      - type: codex
         baseUrl: https://api.example.com/v1
 users:
   - name: test user
     apiKey: user-secret
     services:
-      cx:
+      codex:
         providerName: provider-alpha
         providerKeyName: main-key
 `
@@ -108,7 +115,7 @@ users:
 		t.Fatalf("load config: %v", err)
 	}
 
-	if _, err := manager.Resolve("missing", "cx"); err == nil || err != ErrUserNotFound {
+	if _, err := manager.Resolve("missing", "codex"); err == nil || err != ErrUserNotFound {
 		t.Fatalf("expected ErrUserNotFound, got %v", err)
 	}
 
@@ -138,13 +145,13 @@ providers:
     apiKeys:
       main-key: good-key
     services:
-      - type: cx
+      - type: codex
         baseUrl: https://api.example.com/v1
 users:
   - name: tester
     apiKey: user-secret
     services:
-      cx:
+      codex:
         providerName: provider-alpha
         providerKeyName: main-key
 `
@@ -172,7 +179,7 @@ users: []
 		t.Fatalf("expected error when loading invalid config")
 	}
 
-	route, err := manager.Resolve("user-secret", "cx")
+	route, err := manager.Resolve("user-secret", "codex")
 	if err != nil {
 		t.Fatalf("resolve after failed load: %v", err)
 	}
@@ -188,13 +195,13 @@ providers:
     apiKeys:
       main-key: first-key
     services:
-      - type: cx
+      - type: codex
         baseUrl: https://api.example.com/v1
 users:
   - name: tester
     apiKey: user-secret
     services:
-      cx:
+      codex:
         providerName: provider-alpha
         providerKeyName: main-key
 `
@@ -215,7 +222,7 @@ users:
 	waitForKey := func(expected string) {
 		deadline := time.Now().Add(2 * time.Second)
 		for time.Now().Before(deadline) {
-			route, err := manager.Resolve("user-secret", "cx")
+			route, err := manager.Resolve("user-secret", "codex")
 			if err == nil && route.UpstreamKeyValue == expected {
 				return
 			}
@@ -230,13 +237,13 @@ providers:
     apiKeys:
       main-key: second-key
     services:
-      - type: cx
+      - type: codex
         baseUrl: https://api.example.com/v1
 users:
   - name: tester
     apiKey: user-secret
     services:
-      cx:
+      codex:
         providerName: provider-alpha
         providerKeyName: main-key
 `
@@ -262,7 +269,7 @@ users: []
 	// Give the watcher time to attempt and fail the reload, then ensure the key is unchanged.
 	time.Sleep(200 * time.Millisecond)
 
-	route, err := manager.Resolve("user-secret", "cx")
+	route, err := manager.Resolve("user-secret", "codex")
 	if err != nil {
 		t.Fatalf("resolve after invalid update: %v", err)
 	}

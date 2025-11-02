@@ -39,13 +39,13 @@ providers:
     apiKeys:
       main: upstream-key
     services:
-      - type: cx
+      - type: codex
         baseUrl: %s/v1
 users:
   - name: tester
     apiKey: user-key
     services:
-      cx:
+      codex:
         providerName: upstream
         providerKeyName: main
 `, upstream.URL)
@@ -59,7 +59,7 @@ users:
 
 	gateway := &Gateway{Config: manager}
 
-	req := httptest.NewRequest(http.MethodGet, "/piapi/cx/foo", nil)
+	req := httptest.NewRequest(http.MethodGet, "/piapi/codex/foo", nil)
 	req.Header.Set("Authorization", "Bearer user-key")
 	rr := httptest.NewRecorder()
 
@@ -89,7 +89,7 @@ providers:
     apiKeys:
       main: secret
     services:
-      - type: cc
+      - type: claude_code
         baseUrl: %s
         auth:
           mode: query
@@ -98,7 +98,7 @@ users:
   - name: tester
     apiKey: user-key
     services:
-      cc:
+      claude_code:
         providerName: upstream
         providerKeyName: main
 `, upstream.URL)
@@ -112,7 +112,7 @@ users:
 
 	gateway := &Gateway{Config: manager}
 
-	req := httptest.NewRequest(http.MethodPost, "/piapi/cc", nil)
+	req := httptest.NewRequest(http.MethodPost, "/piapi/claude_code", nil)
 	req.Header.Set("Authorization", "Bearer user-key")
 	rr := httptest.NewRecorder()
 
@@ -133,13 +133,13 @@ providers:
     apiKeys:
       main: secret
     services:
-      - type: cx
+      - type: codex
         baseUrl: https://example.com
 users:
   - name: tester
     apiKey: user-key
     services:
-      cx:
+      codex:
         providerName: upstream
         providerKeyName: main
 `
@@ -153,7 +153,7 @@ users:
 
 	gateway := &Gateway{Config: manager}
 
-	req := httptest.NewRequest(http.MethodGet, "/piapi/cx/foo", nil)
+	req := httptest.NewRequest(http.MethodGet, "/piapi/codex/foo", nil)
 	rr := httptest.NewRecorder()
 
 	gateway.ServeHTTP(rr, req)
@@ -170,13 +170,13 @@ providers:
     apiKeys:
       main: secret
     services:
-      - type: cx
+      - type: codex
         baseUrl: https://example.com
 users:
   - name: tester
     apiKey: user-key
     services:
-      cx:
+      codex:
         providerName: upstream
         providerKeyName: main
 `
@@ -240,13 +240,13 @@ providers:
     apiKeys:
       main: first-key
     services:
-      - type: cx
+      - type: codex
         baseUrl: %s
 users:
   - name: tester
     apiKey: user-key
     services:
-      cx:
+      codex:
         providerName: upstream
         providerKeyName: main
 `, upstream1.URL)
@@ -294,7 +294,7 @@ users:
 	client := &http.Client{Timeout: 2 * time.Second}
 	baseURL := "http://" + ln.Addr().String()
 
-	req, _ := http.NewRequest(http.MethodGet, baseURL+"/piapi/cx/foo", nil)
+	req, _ := http.NewRequest(http.MethodGet, baseURL+"/piapi/codex/foo", nil)
 	req.Header.Set("Authorization", "Bearer user-key")
 	res, err := client.Do(req)
 	if err != nil {
@@ -330,7 +330,7 @@ providers:
     apiKeys:
       main: second-key
     services:
-      - type: cx
+      - type: codex
         baseUrl: %s
         auth:
           mode: query
@@ -339,7 +339,7 @@ users:
   - name: tester
     apiKey: user-key
     services:
-      cx:
+      codex:
         providerName: upstream
         providerKeyName: main
 `, upstream2.URL)
@@ -351,7 +351,7 @@ users:
 	deadline := time.Now().Add(3 * time.Second)
 	var routedToSecond bool
 	for time.Now().Before(deadline) && !routedToSecond {
-		req2, _ := http.NewRequest(http.MethodPost, baseURL+"/piapi/cx/bar", nil)
+		req2, _ := http.NewRequest(http.MethodPost, baseURL+"/piapi/codex/bar", nil)
 		req2.Header.Set("Authorization", "Bearer user-key")
 		res2, err := client.Do(req2)
 		if err == nil {
