@@ -82,13 +82,16 @@ curl -X POST \
 
 ### 2.1 使用 Docker Compose
 
-仓库包含 `Dockerfile` 与 `docker-compose.yml`，可直接构建并启动：
+仓库包含 `docker-compose.yml`，默认从 `ghcr.io/prehisle/piapi:main` 拉取镜像并启动：
 
 ```bash
-docker compose up --build
+docker compose pull
+docker compose up -d
 ```
 
 默认映射主机 `./config.yaml` 到容器 `/app/config.yaml`，启动后即监听 `9200` 端口；修改本地配置并保存可触发容器内的热加载。
+
+> 如果你希望基于本地源码构建镜像，可临时编辑 `docker-compose.yml`，取消 `image` 并恢复 `build: .` 配置，然后运行 `docker compose up --build`。
 
 ### 2.2 从 GHCR 获取镜像
 

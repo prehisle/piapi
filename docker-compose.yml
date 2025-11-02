@@ -2,8 +2,8 @@ version: '3.9'
 
 services:
   piapi:
-    build: .
-    image: piapi-gateway:latest
+    image: ghcr.io/prehisle/piapi:main
+    pull_policy: always
     container_name: piapi-gateway
     ports:
       - "9200:9200"
