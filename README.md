@@ -147,6 +147,60 @@ PIAPI_ADMIN_TOKEN='super-secret-token' go run ./cmd/piapi --config config.yaml -
 
 更新成功后，后端会立即重新加载配置，现有 watcher 和运行时状态会同步刷新。建议在 CI/CD 中通过自定义脚本调用这些接口并记录审计日志。
 
+### 6. 管理后台 UI
+
+除了API接口，piapi还内置了一个基于Next.js的Web管理界面，提供可视化的配置管理能力。
+
+**启用Admin UI：**
+
+管理界面默认关闭，需要设置 `PIAPI_ADMIN_TOKEN` 环境变量来启用：
+
+```bash
+PIAPI_ADMIN_TOKEN='your-secret-token' ./piapi --config config.yaml --listen :9200
+```
+
+启用后，访问 `http://localhost:9200/admin` 即可进入管理界面。
+
+**功能特性：**
+
+* **Providers管理**：查看和编辑上游服务提供商配置，包括API密钥和服务端点
+* **Services管理**：配置服务类型、认证方式和路由规则
+* **Users管理**：管理用户API密钥与服务映射关系
+* **实时配置更新**：所有修改即时生效，无需重启服务
+
+**安全建议：**
+
+* 使用强随机密钥作为Admin Token（推荐：`openssl rand -base64 32`）
+* 在生产环境中建议通过VPN或IP白名单限制Admin界面访问
+* 定期审计配置变更日志
+* 配置文件(config.yaml)包含敏感信息，请确保文件权限为600
+
+**Docker部署示例：**
+
+```bash
+# 本地构建
+make docker-build
+
+# 使用Docker Compose运行（需在docker-compose.yml中添加PIAPI_ADMIN_TOKEN）
+docker compose up -d
+```
+
+**开发与构建：**
+
+```bash
+# 安装前端依赖
+make admin-install
+
+# 构建前端和后端
+make build
+
+# 仅构建后端（跳过前端构建）
+make build-skip-admin
+
+# 清理前端构建产物
+make admin-clean
+```
+
 ## 构建与测试
 
 ```bash

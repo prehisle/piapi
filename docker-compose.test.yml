@@ -1,0 +1,15 @@
+version: '3.9'
+
+services:
+  piapi:
+    image: piapi-gateway:latest
+    container_name: piapi-gateway-test
+    user: "0:0"  # Run as root to read config file
+    ports:
+      - "19300:9200"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    environment:
+      - TZ=UTC
+      - PIAPI_ADMIN_TOKEN=test-admin-secret
+    restart: unless-stopped
