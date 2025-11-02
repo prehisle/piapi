@@ -1,4 +1,4 @@
-# piapi
+# piapi ![CI](https://github.com/<your-org>/piapi/actions/workflows/ci.yml/badge.svg)
 
 piapi 是一个面向小型开发团队的极简 LLM 编码助手网关。它提供统一的 `/piapi/<service_type>` 接口，将请求安全地转发到配置文件中声明的上游服务，并支持热加载、结构化日志与 Prometheus 监控指标。
 
@@ -130,16 +130,18 @@ docker build -t piapi-gateway:latest .
 
 ## 持续集成
 
-仓库默认集成 GitHub Actions：
+仓库默认集成 GitHub Actions，在 `.github/workflows/ci.yml` 中定义。
 
-```yaml
-.github/workflows/ci.yml
-```
+当推送到 `main` 或创建 PR 时会自动执行 `go test ./...` 与 `go build ./cmd/piapi`，确保核心逻辑在合并前通过编译与测试。完成初次推送后，请将 README 顶部徽章中的 `<your-org>` 替换为实际的 GitHub 组织或用户名，以展示 CI 状态。
 
-当推送到 `main` 或创建 PR 时会自动执行 `go test ./...` 与 `go build ./cmd/piapi`，确保核心逻辑在合并前通过编译与测试。完成初次推送后，可在 README 顶部添加 CI 状态徽章，例如：
+## 发布清单
 
-```markdown
-![CI](https://github.com/<your-org>/piapi/actions/workflows/ci.yml/badge.svg)
-```
+在对外发布或创建新的 Git Tag 之前，请确认以下事项：
 
-将 `<your-org>` 替换为实际 GitHub 组织或用户名。
+- [ ] 更新 `config.yaml.example`，确保覆盖所有新增字段。
+- [ ] `go test ./...` 全部通过。
+- [ ] CI 工作流状态为绿色。
+- [ ] README 已替换徽章中的 `<your-org>`。
+- [ ] 若有配置变更，更新 `docs/最终规格说明与实施规划.md` 并与 README 保持一致。
+- [ ] 镜像构建验证通过：`docker build -t piapi-gateway:latest .`。
+- [ ] （可选）在 Release 说明中记录主要变更与兼容性提醒。
