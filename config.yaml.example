@@ -28,13 +28,22 @@ providers:
 users:
   - name: Alice
     apiKey: piapi-user-alice
-    providerName: provider-alpha
-    providerKeyName: main-key
+    services:
+      cx:
+        providerName: provider-alpha
+        providerKeyName: main-key
+      cc:
+        providerName: provider-alpha
+        providerKeyName: main-key
   - name: Bob
     apiKey: piapi-user-bob
-    providerName: provider-alpha
-    providerKeyName: backup-key
+    services:
+      cx:
+        providerName: provider-alpha
+        providerKeyName: backup-key
   - name: Carol
     apiKey: piapi-user-carol
-    providerName: provider-beta
-    providerKeyName: prod-key
+    services:
+      cx:
+        providerName: provider-beta
+        providerKeyName: prod-key

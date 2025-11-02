@@ -50,19 +50,28 @@ providers:
 users:
   - name: Alice
     apiKey: piapi-user-alice
-    providerName: provider-alpha
-    providerKeyName: main-key
+    services:
+      cx:
+        providerName: provider-alpha
+        providerKeyName: main-key
+      cc:
+        providerName: provider-alpha
+        providerKeyName: main-key
   - name: Bob
     apiKey: piapi-user-bob
-    providerName: provider-alpha
-    providerKeyName: backup-key
+    services:
+      cx:
+        providerName: provider-alpha
+        providerKeyName: backup-key
   - name: Carol
     apiKey: piapi-user-carol
-    providerName: provider-beta
-    providerKeyName: prod-key
+    services:
+      cx:
+        providerName: provider-beta
+        providerKeyName: prod-key
 ```
 
-默认情况下，`/piapi/<service_type>/<rest>` 的 `<rest>` 会被原样追加到相应 service 的 `baseUrl` 后面；若 `auth` 未显式配置，则自动使用 `Authorization: Bearer <providerKey>`。
+默认情况下，`/piapi/<service_type>/<rest>` 的 `<rest>` 会被原样追加到相应 service 的 `baseUrl` 后面；若 `auth` 未显式配置，则自动使用 `Authorization: Bearer <providerKey>`。自 0.2.0 起，用户级路由改为“用户 + 服务类型”粒度，可像示例一样为同一用户的 `cx`、`cc` 分别指定不同的上游。
 
 ### 2. 运行服务
 

@@ -29,7 +29,11 @@ type resolvedProvider struct {
 }
 
 type resolvedUser struct {
-	user            User
+	user     User
+	services map[string]*resolvedUserService
+}
+
+type resolvedUserService struct {
 	provider        *resolvedProvider
 	providerKeyName string
 	providerKey     string
@@ -100,17 +104,22 @@ func (m *Manager) Resolve(apiKey, serviceType string) (*Route, error) {
 		return nil, ErrUserNotFound
 	}
 
-	service, ok := user.provider.services[serviceType]
+	resolvedSvc, ok := user.services[serviceType]
 	if !ok {
-		return nil, fmt.Errorf("%w for provider '%s'", ErrServiceNotFound, user.provider.provider.Name)
+		return nil, fmt.Errorf("%w for user '%s'", ErrServiceNotFound, user.user.Name)
+	}
+
+	service, ok := resolvedSvc.provider.services[serviceType]
+	if !ok {
+		return nil, fmt.Errorf("%w for provider '%s'", ErrServiceNotFound, resolvedSvc.provider.provider.Name)
 	}
 
 	route := &Route{
 		User:             user.user,
-		Provider:         user.provider.provider,
+		Provider:         resolvedSvc.provider.provider,
 		Service:          service,
-		UpstreamKeyName:  user.providerKeyName,
-		UpstreamKeyValue: user.providerKey,
+		UpstreamKeyName:  resolvedSvc.providerKeyName,
+		UpstreamKeyValue: resolvedSvc.providerKey,
 	}
 	return route, nil
 }
@@ -213,36 +222,68 @@ func parse(b []byte) (*resolvedConfig, error) {
 		if _, exists := users[apiKey]; exists {
 			return nil, fmt.Errorf("duplicate user apiKey '%s'", apiKey)
 		}
-		providerName := strings.TrimSpace(u.ProviderName)
-		if providerName == "" {
-			return nil, fmt.Errorf("users[%d]: providerName is required", i)
-		}
-		provider, ok := providers[providerName]
-		if !ok {
-			return nil, fmt.Errorf("users[%d]: provider '%s' not defined", i, providerName)
-		}
-		providerKeyName := strings.TrimSpace(u.ProviderKeyName)
-		if providerKeyName == "" {
-			return nil, fmt.Errorf("users[%d]: providerKeyName is required", i)
-		}
-		providerKey, ok := provider.provider.APIKeys[providerKeyName]
-		if !ok {
-			return nil, fmt.Errorf("users[%d]: provider key '%s' missing for provider '%s'", i, providerKeyName, providerName)
+
+		if len(u.Services) == 0 {
+			return nil, fmt.Errorf("users[%d]: services mapping is required", i)
 		}
 
-		resolved := &resolvedUser{
-			user: User{
-				Name:            strings.TrimSpace(u.Name),
-				APIKey:          apiKey,
+		resolvedServices := make(map[string]*resolvedUserService, len(u.Services))
+		sanitizedServices := make(map[string]UserServiceRoute, len(u.Services))
+		for svcType, route := range u.Services {
+			trimmedType := strings.TrimSpace(svcType)
+			if trimmedType == "" {
+				return nil, fmt.Errorf("users[%d]: service type key must not be empty", i)
+			}
+			if _, exists := resolvedServices[trimmedType]; exists {
+				return nil, fmt.Errorf("users[%d]: duplicate service mapping for '%s'", i, trimmedType)
+			}
+
+			providerName := strings.TrimSpace(route.ProviderName)
+			if providerName == "" {
+				return nil, fmt.Errorf("users[%d] service '%s': providerName is required", i, trimmedType)
+			}
+			provider, ok := providers[providerName]
+			if !ok {
+				return nil, fmt.Errorf("users[%d] service '%s': provider '%s' not defined", i, trimmedType, providerName)
+			}
+
+			providerKeyName := strings.TrimSpace(route.ProviderKeyName)
+			if providerKeyName == "" {
+				return nil, fmt.Errorf("users[%d] service '%s': providerKeyName is required", i, trimmedType)
+			}
+
+			providerKey, ok := provider.provider.APIKeys[providerKeyName]
+			if !ok {
+				return nil, fmt.Errorf("users[%d] service '%s': provider key '%s' missing for provider '%s'", i, trimmedType, providerKeyName, providerName)
+			}
+
+			if _, ok := provider.services[trimmedType]; !ok {
+				return nil, fmt.Errorf("users[%d] service '%s': provider '%s' does not expose this service", i, trimmedType, providerName)
+			}
+
+			resolvedServices[trimmedType] = &resolvedUserService{
+				provider:        provider,
+				providerKeyName: providerKeyName,
+				providerKey:     providerKey,
+			}
+
+			sanitizedServices[trimmedType] = UserServiceRoute{
 				ProviderName:    providerName,
 				ProviderKeyName: providerKeyName,
-			},
-			provider:        provider,
-			providerKeyName: providerKeyName,
-			providerKey:     providerKey,
+			}
 		}
-		users[apiKey] = resolved
-		raw.Users[i] = resolved.user
+
+		sanitizedUser := User{
+			Name:     strings.TrimSpace(u.Name),
+			APIKey:   apiKey,
+			Services: sanitizedServices,
+		}
+
+		users[apiKey] = &resolvedUser{
+			user:     sanitizedUser,
+			services: resolvedServices,
+		}
+		raw.Users[i] = sanitizedUser
 	}
 
 	return &resolvedConfig{

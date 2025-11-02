@@ -44,8 +44,10 @@ providers:
 users:
   - name: tester
     apiKey: user-key
-    providerName: upstream
-    providerKeyName: main
+    services:
+      cx:
+        providerName: upstream
+        providerKeyName: main
 `, upstream.URL)
 
 	path := writeTempConfig(t, yaml)
@@ -95,8 +97,10 @@ providers:
 users:
   - name: tester
     apiKey: user-key
-    providerName: upstream
-    providerKeyName: main
+    services:
+      cc:
+        providerName: upstream
+        providerKeyName: main
 `, upstream.URL)
 
 	path := writeTempConfig(t, yaml)
@@ -134,8 +138,10 @@ providers:
 users:
   - name: tester
     apiKey: user-key
-    providerName: upstream
-    providerKeyName: main
+    services:
+      cx:
+        providerName: upstream
+        providerKeyName: main
 `
 
 	path := writeTempConfig(t, yaml)
@@ -169,8 +175,10 @@ providers:
 users:
   - name: tester
     apiKey: user-key
-    providerName: upstream
-    providerKeyName: main
+    services:
+      cx:
+        providerName: upstream
+        providerKeyName: main
 `
 
 	path := writeTempConfig(t, yaml)
@@ -237,8 +245,10 @@ providers:
 users:
   - name: tester
     apiKey: user-key
-    providerName: upstream
-    providerKeyName: main
+    services:
+      cx:
+        providerName: upstream
+        providerKeyName: main
 `, upstream1.URL)
 
 	path := writeTempConfig(t, initial)
@@ -328,8 +338,10 @@ providers:
 users:
   - name: tester
     apiKey: user-key
-    providerName: upstream
-    providerKeyName: main
+    services:
+      cx:
+        providerName: upstream
+        providerKeyName: main
 `, upstream2.URL)
 
 	if err := os.WriteFile(path, []byte(updated), 0o600); err != nil {

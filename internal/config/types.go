@@ -35,8 +35,13 @@ type AuthConfig struct {
 
 // User defines the mapping between a piapi API key and an upstream route.
 type User struct {
-	Name            string `yaml:"name"`
-	APIKey          string `yaml:"apiKey"`
+	Name     string                      `yaml:"name"`
+	APIKey   string                      `yaml:"apiKey"`
+	Services map[string]UserServiceRoute `yaml:"services"`
+}
+
+// UserServiceRoute defines the upstream selection for a specific service type.
+type UserServiceRoute struct {
 	ProviderName    string `yaml:"providerName"`
 	ProviderKeyName string `yaml:"providerKeyName"`
 }
