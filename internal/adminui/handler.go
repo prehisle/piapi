@@ -39,12 +39,18 @@ func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Try to open the file
 		f, err := h.staticFS.Open(path)
 		if err != nil {
-			// File not found, serve admin.html for SPA routing
+			// If it's a static asset (starts with /_next or is a known static file), return 404
+			if isStaticAsset(path) {
+				http.Error(w, "Not Found", http.StatusNotFound)
+				return
+			}
+			// Otherwise, serve admin.html for SPA routing (client-side routes)
 			f, err = h.staticFS.Open("/admin.html")
 			if err != nil {
 				http.Error(w, "Not Found", http.StatusNotFound)
 				return
 			}
+			path = "/admin.html" // Update path for correct content type
 		}
 		defer f.Close()
 
@@ -65,6 +71,7 @@ func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			defer f.Close()
 			stat, _ = f.Stat()
+			path = "/admin.html"
 		}
 
 		// Serve the file
@@ -72,6 +79,21 @@ func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		io.Copy(w, f)
 	})).ServeHTTP(w, r)
+}
+
+func isStaticAsset(path string) bool {
+	// Check if path starts with known static asset prefixes
+	if len(path) >= 6 && path[:6] == "/_next" {
+		return true
+	}
+	// Check for other static files
+	staticPrefixes := []string{"/placeholder", "/.next", "/__next"}
+	for _, prefix := range staticPrefixes {
+		if len(path) >= len(prefix) && path[:len(prefix)] == prefix {
+			return true
+		}
+	}
+	return false
 }
 
 func getContentType(path string) string {
@@ -86,8 +108,14 @@ func getContentType(path string) string {
 		return "image/png"
 	case len(path) > 4 && path[len(path)-4:] == ".jpg":
 		return "image/jpeg"
+	case len(path) > 5 && path[len(path)-5:] == ".jpeg":
+		return "image/jpeg"
 	case len(path) > 4 && path[len(path)-4:] == ".svg":
 		return "image/svg+xml"
+	case len(path) > 5 && path[len(path)-5:] == ".woff":
+		return "font/woff"
+	case len(path) > 6 && path[len(path)-6:] == ".woff2":
+		return "font/woff2"
 	default:
 		return "application/octet-stream"
 	}
