@@ -162,3 +162,229 @@ func TestHandler_PutConfigRaw_Invalid(t *testing.T) {
 		t.Fatalf("config file should remain unchanged on invalid payload")
 	}
 }
+
+func TestHandler_AuthorizationVariants(t *testing.T) {
+	handler, _ := newTestHandler(t)
+
+	tests := []struct {
+		name   string
+		header string
+		status int
+	}{
+		{"no header", "", http.StatusUnauthorized},
+		{"wrong prefix", "Basic secret-token", http.StatusUnauthorized},
+		{"empty token", "Bearer ", http.StatusUnauthorized},
+		{"wrong token", "Bearer wrong-token", http.StatusUnauthorized},
+		{"valid token", "Bearer secret-token", http.StatusOK},
+		{"case insensitive bearer", "bearer secret-token", http.StatusOK},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/config/raw", nil)
+			if tt.header != "" {
+				req.Header.Set("Authorization", tt.header)
+			}
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+
+			if rr.Code != tt.status {
+				t.Errorf("expected status %d, got %d", tt.status, rr.Code)
+			}
+		})
+	}
+}
+
+func TestHandler_EmptyToken(t *testing.T) {
+	manager := config.NewManager()
+	logger := zap.NewNop()
+	handler := NewHandler(manager, "", "", logger)
+
+	req := httptest.NewRequest(http.MethodGet, "/config/raw", nil)
+	req.Header.Set("Authorization", "Bearer secret-token")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected 404 when token is empty, got %d", rr.Code)
+	}
+}
+
+func TestHandler_NotFoundRoutes(t *testing.T) {
+	handler, _ := newTestHandler(t)
+
+	tests := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodPost, "/config/raw"},
+		{http.MethodDelete, "/config/raw"},
+		{http.MethodPost, "/config"},
+		{http.MethodGet, "/unknown"},
+		{http.MethodGet, "/config/something"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			req.Header.Set("Authorization", "Bearer secret-token")
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusNotFound {
+				t.Errorf("expected 404, got %d", rr.Code)
+			}
+		})
+	}
+}
+
+func TestHandler_PathMatching(t *testing.T) {
+	handler, _ := newTestHandler(t)
+
+	// Test with trailing slash
+	req := httptest.NewRequest(http.MethodGet, "/config/raw/", nil)
+	req.Header.Set("Authorization", "Bearer secret-token")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200 for path with trailing slash, got %d", rr.Code)
+	}
+}
+
+func TestHandler_PutConfigRaw_Empty(t *testing.T) {
+	handler, _ := newTestHandler(t)
+
+	req := httptest.NewRequest(http.MethodPut, "/config/raw", strings.NewReader("   \n\t  "))
+	req.Header.Set("Authorization", "Bearer secret-token")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for empty payload, got %d", rr.Code)
+	}
+}
+
+func TestHandler_PutConfigRaw_InvalidYAML(t *testing.T) {
+	handler, _ := newTestHandler(t)
+
+	req := httptest.NewRequest(http.MethodPut, "/config/raw", strings.NewReader("not: [valid: yaml"))
+	req.Header.Set("Authorization", "Bearer secret-token")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid YAML, got %d", rr.Code)
+	}
+}
+
+func TestHandler_GetConfigRaw_FileError(t *testing.T) {
+	handler, cfgPath := newTestHandler(t)
+
+	// Remove the config file to trigger read error
+	os.Remove(cfgPath)
+
+	req := httptest.NewRequest(http.MethodGet, "/config/raw", nil)
+	req.Header.Set("Authorization", "Bearer secret-token")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when file doesn't exist, got %d", rr.Code)
+	}
+}
+
+func TestHandler_GetConfigStructured_NilConfig(t *testing.T) {
+	// Create handler with empty manager (no config loaded)
+	manager := config.NewManager()
+	logger := zap.NewNop()
+	handler := NewHandler(manager, "/tmp/nonexistent.yaml", "secret-token", logger)
+
+	req := httptest.NewRequest(http.MethodGet, "/config", nil)
+	req.Header.Set("Authorization", "Bearer secret-token")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when config is nil, got %d", rr.Code)
+	}
+}
+
+func TestHandler_PutConfigRaw_DuplicateProviders(t *testing.T) {
+	handler, cfgPath := newTestHandler(t)
+
+	// Create a config with duplicate provider names (caught during parsing)
+	badConfig := `
+providers:
+  - name: provider-alpha
+    apiKeys:
+      main-key: sk-alpha-xxx
+    services:
+      - type: codex
+        baseUrl: https://alpha.example.com
+        auth:
+          mode: header
+          name: Authorization
+          prefix: "Bearer "
+  - name: provider-alpha
+    apiKeys:
+      main-key: sk-beta-xxx
+    services:
+      - type: codex
+        baseUrl: https://beta.example.com
+        auth:
+          mode: header
+          name: Authorization
+          prefix: "Bearer "
+
+users:
+  - name: Alice
+    apiKey: piapi-user-alice
+    services:
+      codex:
+        providerName: provider-alpha
+        providerKeyName: main-key
+`
+
+	req := httptest.NewRequest(http.MethodPut, "/config/raw", strings.NewReader(badConfig))
+	req.Header.Set("Authorization", "Bearer secret-token")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	// Should fail with bad request due to duplicate provider names
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for duplicate providers, got %d", rr.Code)
+	}
+
+	// Verify original config was not changed
+	content, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if !strings.Contains(string(content), "https://alpha.example.com") {
+		t.Errorf("original config should remain unchanged")
+	}
+}
+
+func TestHandler_PutConfigRaw_TooLarge(t *testing.T) {
+	handler, _ := newTestHandler(t)
+
+	// Create payload larger than maxConfigPayloadSize
+	largePayload := strings.Repeat("x", 2*1024*1024) // 2 MiB
+
+	req := httptest.NewRequest(http.MethodPut, "/config/raw", strings.NewReader(largePayload))
+	req.Header.Set("Authorization", "Bearer secret-token")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for too large payload, got %d", rr.Code)
+	}
+}
