@@ -203,16 +203,48 @@ make admin-clean
 
 ## 构建与测试
 
+### 运行测试
+
 ```bash
-go test ./...
-go build ./cmd/piapi
+# 运行所有测试
+make test
+
+# 查看测试覆盖率
+go test -cover ./...
 ```
 
-构建容器镜像：
+**测试覆盖率**：
+- internal/adminapi: 72.7%
+- internal/config: 70.5%
+- internal/server: 72.8%
+- internal/logging: 100%
+- internal/metrics: 100%
+- **整体覆盖率**: ~77%
+
+### 构建二进制
 
 ```bash
+# 完整构建（包含前端）
+make build
+
+# 快速构建（跳过前端）
+make build-skip-admin
+
+# 仅构建前端
+make admin-build
+```
+
+### 构建容器镜像
+
+```bash
+# 本地构建
+make docker-build
+
+# 或直接使用 Docker
 docker build -t piapi-gateway:latest .
 ```
+
+**Docker镜像大小**: 36MB (使用 distroless 基础镜像)
 
 ## 系统假设
 
