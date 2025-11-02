@@ -37,6 +37,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		userName        string
 		providerName    string
 		providerKeyName string
+		upstreamURL     string
 		errMessage      string
 	)
 
@@ -50,6 +51,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			zap.String("service_type", serviceType),
 			zap.String("upstream_provider", providerName),
 			zap.String("upstream_key", providerKeyName),
+			zap.String("upstream_url", upstreamURL),
 			zap.Int("status", status),
 			zap.Duration("latency", time.Since(start)),
 		}
@@ -135,7 +137,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		zap.String("upstream_provider", providerName),
 	)
 
-	proxy := g.buildProxy(target, route, rest, r.URL.RawQuery, reqLogger, &errMessage)
+	proxy := g.buildProxy(target, route, rest, r.URL.RawQuery, reqLogger, &errMessage, &upstreamURL)
 	proxy.ServeHTTP(lrw, r)
 }
 
@@ -179,7 +181,7 @@ func extractAPIKey(header string) (string, error) {
 	return "", fmt.Errorf("unsupported authorization scheme")
 }
 
-func (g *Gateway) buildProxy(target *url.URL, route *config.Route, rest string, originalRawQuery string, logger *zap.Logger, errMsg *string) *httputil.ReverseProxy {
+func (g *Gateway) buildProxy(target *url.URL, route *config.Route, rest string, originalRawQuery string, logger *zap.Logger, errMsg *string, upstreamURL *string) *httputil.ReverseProxy {
 	director := func(req *http.Request) {
 		req.URL.Scheme = target.Scheme
 		req.URL.Host = target.Host
@@ -206,6 +208,10 @@ func (g *Gateway) buildProxy(target *url.URL, route *config.Route, rest string, 
 			req.Header.Set(auth.Name, value)
 		} else if auth == nil {
 			req.Header.Set("Authorization", "Bearer "+route.UpstreamKeyValue)
+		}
+
+		if upstreamURL != nil {
+			*upstreamURL = req.URL.String()
 		}
 	}
 
