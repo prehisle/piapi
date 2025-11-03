@@ -159,7 +159,37 @@ export function UsersTable({ users, providers, onAdd, onUpdate, onDelete }: User
   }
 
   const copyToClipboard = async (text: string) => {
-    await navigator.clipboard.writeText(text)
+    // Try modern clipboard API first (requires HTTPS or localhost)
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text)
+        return
+      } catch (err) {
+        console.warn('Clipboard API failed, falling back to execCommand', err)
+      }
+    }
+
+    // Fallback for HTTP or older browsers
+    try {
+      const textArea = document.createElement('textarea')
+      textArea.value = text
+      textArea.style.position = 'fixed'
+      textArea.style.left = '-999999px'
+      textArea.style.top = '-999999px'
+      document.body.appendChild(textArea)
+      textArea.focus()
+      textArea.select()
+
+      const successful = document.execCommand('copy')
+      document.body.removeChild(textArea)
+
+      if (!successful) {
+        throw new Error('execCommand failed')
+      }
+    } catch (err) {
+      console.error('Copy failed:', err)
+      throw new Error('Failed to copy to clipboard. Please copy manually.')
+    }
   }
 
   const copyUserConfig = async (user: User) => {
