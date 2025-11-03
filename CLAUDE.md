@@ -102,7 +102,35 @@ The service watches the config file and automatically reloads changes. Failed re
 
 ## Recent Work & Current Status (2025-11-03)
 
-### ✅ Latest: Security Enhancement - API Key Masking (2025-11-03 Session 3)
+### ✅ Latest: Editable API Keys with Batch Updates (2025-11-03 Session 4)
+
+**Feature Implementation - Scheme C (Most Complete):**
+
+- **Editable API Keys**: Full editing support for Key Name and Key Value
+  - Edit button with inline editing mode (Save/Cancel)
+  - Password-type input for Key Value editing
+  - Real-time warning when renaming keys with user references
+
+- **Batch User Updates**: Automatic cascade updates when renaming keys
+  - Detects all Key Name changes
+  - Finds all affected users automatically
+  - Shows confirmation dialog with impact summary
+  - Updates provider and all users in atomic operation
+
+- **Comprehensive Testing**: 100% test coverage
+  - Test suite: `web/admin/scripts/test-key-rename.mjs`
+  - 4 scenarios, 10 assertions, all passed ✅
+  - Scenarios: single rename, multiple renames, value-only changes, unused keys
+
+- **Documentation**: Complete usage guide in `API_KEY_EDIT_FEATURE.md`
+
+**Use Cases Supported**:
+1. API key rotation (change value only)
+2. Key renaming with automatic user updates
+3. Fixing typos in key names
+4. Managing keys without breaking references
+
+### ✅ Security Enhancement - API Key Masking (2025-11-03 Session 3)
 
 **Security Improvements:**
 
