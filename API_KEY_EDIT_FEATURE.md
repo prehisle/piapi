@@ -10,18 +10,20 @@
 
 ## 核心功能
 
-### 1. 编辑模式
+### 1. 直接编辑（无模式切换）
 
-**触发方式**：
-- 在 Provider 编辑页面，点击 API Key 行的 "Edit" 按钮
+**编辑方式**：
+- API Keys 始终显示为可编辑输入框
+- 与 Services 部分保持一致的 UX
+- 无需点击 Edit 按钮进入编辑模式
 
 **编辑内容**：
-- **Key Name**：可以修改（如果有用户引用，会显示警告）
-- **Key Value**：可以修改（支持密钥轮换）
+- **Key Name**：直接在输入框中修改（如果有用户引用，会实时显示警告）
+- **Key Value**：直接在密码输入框中修改（支持密钥轮换）
 
 **操作按钮**：
-- **Save (保存图标)**：保存当前编辑
-- **Cancel (X 图标)**：取消编辑，恢复原值
+- **Delete (🗑️)**：删除 Key（仅当无用户引用时可用）
+- **Save Changes**：保存所有修改（页面底部）
 
 ### 2. 批量更新逻辑
 
@@ -135,33 +137,27 @@ Success rate: 100.0%
 ### 场景 1：API Key 轮换（只更新 Value）
 
 1. 进入 Provider 编辑页面
-2. 点击目标 Key 的 "Edit" 按钮
-3. 修改 **Key Value** 为新密钥
-4. 点击 "Save"
-5. 点击页面底部 "Save Changes"
-6. ✅ 完成！无需确认，因为 Key Name 未变化
+2. 在 API Keys 部分，直接在输入框中修改 **Key Value**
+3. 点击页面底部 "Save Changes"
+4. ✅ 完成！无需确认，因为 Key Name 未变化
 
 ### 场景 2：重命名 Key（Name 和 Value 都可改）
 
 1. 进入 Provider 编辑页面
-2. 点击目标 Key 的 "Edit" 按钮
-3. 修改 **Key Name** 为新名称
-4. （可选）修改 **Key Value**
-5. 点击 "Save"
-6. 页面显示警告：`⚠️ Renaming will update N user route(s)`
-7. 点击页面底部 "Save Changes"
-8. 弹出确认对话框，显示影响的用户数量
-9. 点击 "OK" 确认
-10. ✅ Provider 和所有 Users 自动更新完成！
+2. 在 Key Name 输入框中直接修改为新名称
+3. （可选）同时修改 **Key Value**
+4. 实时显示警告：`⚠️ Renaming will update N user route(s)`
+5. 点击页面底部 "Save Changes"
+6. 弹出确认对话框，显示影响的用户数量
+7. 点击 "OK" 确认
+8. ✅ Provider 和所有 Users 自动更新完成！
 
 ### 场景 3：修正拼写错误（无引用）
 
 1. 进入 Provider 编辑页面
-2. 点击目标 Key 的 "Edit" 按钮
-3. 修改 **Key Name**（例如 `mai-key` → `main-key`）
-4. 点击 "Save"
-5. 点击页面底部 "Save Changes"
-6. ✅ 如果该 Key 没有被任何用户引用，直接保存，无需确认
+2. 直接在输入框中修改 **Key Name**（例如 `mai-key` → `main-key`）
+3. 点击页面底部 "Save Changes"
+4. ✅ 如果该 Key 没有被任何用户引用，直接保存，无需确认
 
 ## 技术实现
 
@@ -170,11 +166,9 @@ Success rate: 100.0%
 **编辑页面**：`web/admin/app/(admin)/providers/edit/page.tsx`
 
 **核心函数**：
-- `handleEditKey(index)` - 进入编辑模式
-- `handleUpdateKeyName(index, newName)` - 更新 Key Name
-- `handleUpdateKeyValue(index, newValue)` - 更新 Key Value
-- `handleSaveKeyEdit(index)` - 保存编辑（仅前端状态）
-- `handleCancelKeyEdit(index)` - 取消编辑
+- `handleUpdateKeyName(index, newName)` - 实时更新 Key Name
+- `handleUpdateKeyValue(index, newValue)` - 实时更新 Key Value
+- `handleRemoveKey(index)` - 删除 Key（带引用检查）
 - `handleSave()` - 保存整个 Provider（包含批量更新逻辑）
 
 **批量更新逻辑**：
@@ -217,16 +211,15 @@ await Promise.all(updatePromises)
 
 ### 状态管理
 
-**编辑状态**：
-- `editingKeyIndex: number | null` - 当前正在编辑的 Key 索引
+**简化的状态**：
+- 无需 `editingKeyIndex` 状态（移除了编辑模式）
+- 所有修改直接更新本地 `provider` 状态
+- 点击 "Save Changes" 时一次性保存所有修改
 
-**本地修改**：
-- 编辑时修改本地 `provider` 状态
-- 点击 "Save" 按钮只是退出编辑模式，不发送 API 请求
-- 点击页面底部 "Save Changes" 才真正保存
-
-**恢复机制**：
-- 点击 "Cancel" 时，从 `providers` 列表中恢复原始值
+**实时更新**：
+- 输入框变化立即更新本地状态
+- 实时计算是否会影响用户
+- 实时显示警告信息
 
 ## 安全性
 
@@ -250,13 +243,14 @@ await Promise.all(updatePromises)
 
 ### 视觉反馈
 
-**编辑模式**：
-- 输入框替换只读文本
-- 显示 Save/Cancel 按钮
+**始终可编辑**：
+- 所有 Keys 显示为输入框（与 Services 一致）
+- 无需模式切换，更直观
 
 **警告提示**：
 - 实时显示受影响的用户数量
 - 警告图标和文字提示
+- 边框颜色变化提示有影响
 
 **确认对话框**：
 - 清晰列出所有 Key Name 变化
@@ -264,16 +258,17 @@ await Promise.all(updatePromises)
 
 ### 操作流程
 
-**分步保存**：
-1. 点击 "Edit" → 进入编辑模式
-2. 修改 Key Name/Value
-3. 点击 "Save" → 退出编辑模式（本地保存）
-4. 点击 "Save Changes" → 发送 API 请求（可能触发确认）
+**简化流程**：
+1. 直接在输入框中修改 Key Name/Value
+2. 实时显示警告（如果有影响）
+3. 点击 "Save Changes" → 发送 API 请求（可能触发确认）
 
 **优点**：
 - 支持批量编辑多个 Keys
 - 一次性保存所有修改
 - 减少 API 请求次数
+- 更少的点击次数
+- 与 Services 部分 UX 一致
 
 ## 已知限制
 
@@ -298,12 +293,14 @@ provider.api_keys.forEach((key, index) => {
 ### 无 Undo 功能
 
 **当前行为**：
-- 点击 "Cancel" 只能恢复单个 Key 的编辑
+- 修改立即反映在本地状态
 - 一旦点击 "Save Changes" 并确认，无法撤销
+- 需要手动刷新页面才能恢复原值
 
 **改进建议**：
 - 添加配置历史/版本控制
 - 提供 "Revert to previous version" 功能
+- 添加 "Cancel" 按钮恢复到加载时的状态
 
 ## 构建和部署
 
@@ -344,15 +341,21 @@ docker compose up -d
 - 自动批量更新引用
 - 确认对话框
 - 完整测试覆盖（100% 通过）
-- UI/UX 优化
+- UI/UX 优化（与 Services 保持一致）
+- 简化的交互流程（移除编辑模式）
 
 ✅ **测试验证**：
 - 10 个测试断言全部通过
 - 覆盖所有主要场景
 
 ✅ **安全性**：
-- API Key 脱敏显示
+- API Key 脱敏显示（密码输入框）
 - 引用完整性自动维护
 - 删除保护机制
+
+✅ **UX 改进**：
+- 直接编辑，无需点击 Edit 按钮
+- 实时警告和反馈
+- 与 Services 部分一致的交互体验
 
 🎉 **功能已就绪，可以投入使用！**
