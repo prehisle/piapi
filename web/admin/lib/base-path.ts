@@ -22,11 +22,11 @@ export function getBasePath(): string {
 }
 
 export function withBasePath(path: string): string {
+  // Note: Next.js basePath config automatically handles prefixing for
+  // Link components and router.push(), so we just return the original path.
+  // API requests should use hardcoded paths (e.g., '/piadmin/api').
   const normalizedPath = ensureLeadingSlash(path)
-  if (!normalizedBasePath) {
-    return normalizedPath
-  }
-  return `${normalizedBasePath}${normalizedPath}`
+  return normalizedPath
 }
 
 export function stripBasePath(path: string): string {

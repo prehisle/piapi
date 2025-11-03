@@ -1,5 +1,3 @@
-import { withBasePath } from './base-path'
-
 /**
  * API client for piapi admin backend
  */
@@ -48,7 +46,8 @@ class ApiClient {
 
   constructor() {
     // Base URL for admin API
-    this.baseURL = withBasePath('/api')
+    // Note: /piadmin/api is the actual backend path
+    this.baseURL = '/piadmin/api'
 
     // Load token from localStorage if available
     if (typeof window !== 'undefined') {
