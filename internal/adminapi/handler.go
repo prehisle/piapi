@@ -148,40 +148,47 @@ func (h *Handler) writeConfig(payload []byte) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	// Read original config for backup
 	original, err := os.ReadFile(h.configPath)
 	if err != nil {
 		return fmt.Errorf("read existing config: %w", err)
 	}
 
+	// Create backup file in same directory
 	dir := filepath.Dir(h.configPath)
-	tmpFile, err := os.CreateTemp(dir, "config-*.yaml")
+	backupFile, err := os.CreateTemp(dir, "config-backup-*.yaml")
 	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
+		return fmt.Errorf("create backup file: %w", err)
 	}
-	tmpName := tmpFile.Name()
+	backupName := backupFile.Name()
 	defer func() {
-		_ = tmpFile.Close()
-		_ = os.Remove(tmpName)
+		_ = backupFile.Close()
+		_ = os.Remove(backupName)
 	}()
 
-	if _, err := tmpFile.Write(payload); err != nil {
-		return fmt.Errorf("write temp config: %w", err)
+	if _, err := backupFile.Write(original); err != nil {
+		return fmt.Errorf("write backup: %w", err)
 	}
-	if err := tmpFile.Sync(); err != nil {
-		return fmt.Errorf("sync temp config: %w", err)
+	if err := backupFile.Sync(); err != nil {
+		return fmt.Errorf("sync backup: %w", err)
 	}
-	if err := tmpFile.Close(); err != nil {
-		return fmt.Errorf("close temp config: %w", err)
-	}
-
-	if err := os.Rename(tmpName, h.configPath); err != nil {
-		return fmt.Errorf("replace config: %w", err)
+	if err := backupFile.Close(); err != nil {
+		return fmt.Errorf("close backup: %w", err)
 	}
 
+	// Write new config directly to the target file
+	// This works with Docker bind mounts, unlike os.Rename()
+	if err := os.WriteFile(h.configPath, payload, 0600); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+
+	// Validate by reloading config
 	if err := h.manager.LoadFromFile(h.configPath); err != nil {
-		// attempt restore
-		if restoreErr := h.restore(original); restoreErr != nil {
+		// Restore from backup on failure
+		if restoreErr := os.WriteFile(h.configPath, original, 0600); restoreErr != nil {
 			h.logger.Error("failed to restore config after load failure", zap.Error(restoreErr))
+		} else {
+			_ = h.manager.LoadFromFile(h.configPath) // Try to reload backup
 		}
 		return fmt.Errorf("reload config: %w", err)
 	}
@@ -191,29 +198,9 @@ func (h *Handler) writeConfig(payload []byte) error {
 }
 
 func (h *Handler) restore(original []byte) error {
-	dir := filepath.Dir(h.configPath)
-	tmpFile, err := os.CreateTemp(dir, "config-restore-*.yaml")
-	if err != nil {
-		return fmt.Errorf("create restore temp file: %w", err)
-	}
-	tmpName := tmpFile.Name()
-	defer func() {
-		_ = tmpFile.Close()
-		_ = os.Remove(tmpName)
-	}()
-
-	if _, err := tmpFile.Write(original); err != nil {
-		return fmt.Errorf("write restore temp file: %w", err)
-	}
-	if err := tmpFile.Sync(); err != nil {
-		return fmt.Errorf("sync restore temp file: %w", err)
-	}
-	if err := tmpFile.Close(); err != nil {
-		return fmt.Errorf("close restore temp file: %w", err)
-	}
-
-	if err := os.Rename(tmpName, h.configPath); err != nil {
-		return fmt.Errorf("restore config file rename: %w", err)
+	// Write directly to config file (works with Docker bind mounts)
+	if err := os.WriteFile(h.configPath, original, 0600); err != nil {
+		return fmt.Errorf("restore config file: %w", err)
 	}
 
 	return h.manager.LoadFromFile(h.configPath)
