@@ -44,41 +44,42 @@ func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		// Try to open the file
 		f, err := h.staticFS.Open(cleanPath)
-		if err != nil {
-			// If it's a static asset (starts with /_next or is a known static file), return 404
-			if isStaticAsset(path) {
-				http.Error(w, "Not Found", http.StatusNotFound)
-				return
+		var isDir bool
+		if err == nil {
+			stat, statErr := f.Stat()
+			if statErr == nil {
+				isDir = stat.IsDir()
 			}
-			// Otherwise, serve admin.html for SPA routing (client-side routes)
-			f, err = h.staticFS.Open("admin.html")
-			if err != nil {
-				http.Error(w, "Not Found", http.StatusNotFound)
-				return
+			f.Close()
+		}
+
+		// If file not found or is a directory, try {path}.html for Next.js routes
+		if err != nil || isDir {
+			htmlPath := cleanPath + ".html"
+			if len(cleanPath) > 0 && cleanPath[len(cleanPath)-1] == '/' {
+				htmlPath = cleanPath[:len(cleanPath)-1] + ".html"
 			}
-			path = "/admin.html" // Update path for correct content type
+
+			f, err = h.staticFS.Open(htmlPath)
+			if err == nil {
+				// Successfully opened {path}.html
+				path = "/" + htmlPath
+			} else {
+				// If it's a static asset, return 404
+				if isStaticAsset(path) {
+					http.Error(w, "Not Found", http.StatusNotFound)
+					return
+				}
+				// Otherwise, serve admin.html for SPA routing
+				f, err = h.staticFS.Open("admin.html")
+				if err != nil {
+					http.Error(w, "Not Found", http.StatusNotFound)
+					return
+				}
+				path = "/admin.html"
+			}
 		}
 		defer f.Close()
-
-		// Check if it's a directory
-		stat, err := f.Stat()
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		if stat.IsDir() {
-			// Serve admin.html for directories
-			f.Close()
-			f, err = h.staticFS.Open("admin.html")
-			if err != nil {
-				http.Error(w, "Not Found", http.StatusNotFound)
-				return
-			}
-			defer f.Close()
-			stat, _ = f.Stat()
-			path = "/admin.html"
-		}
 
 		// Serve the file
 		w.Header().Set("Content-Type", getContentType(path))
