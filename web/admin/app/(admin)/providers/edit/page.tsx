@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { ArrowLeft, Trash2, Plus } from "lucide-react"
+import { ArrowLeft, Trash2, Plus, Edit, Save, X } from "lucide-react"
 import { useState, useEffect, useMemo } from "react"
 import { cn, maskApiKey } from "@/lib/utils"
 import { withBasePath } from "@/lib/base-path"
@@ -33,7 +33,7 @@ export default function EditProviderPage() {
   const searchParams = useSearchParams()
   const providerName = searchParams.get("name") || ""
   const { providers, updateProvider } = useProviders()
-  const { users } = useUsers()
+  const { users, updateUser } = useUsers()
 
   const [provider, setProvider] = useState<ProviderFormData>({ name: "", api_keys: [], services: [] })
   const [newKeyName, setNewKeyName] = useState("")
@@ -41,6 +41,9 @@ export default function EditProviderPage() {
   const [errors, setErrors] = useState<string[]>([])
   const [isSaving, setIsSaving] = useState(false)
   const [serviceFieldErrors, setServiceFieldErrors] = useState<ServiceFieldError[]>([])
+  const [editingKeyIndex, setEditingKeyIndex] = useState<number | null>(null)
+  const [showRenameConfirm, setShowRenameConfirm] = useState(false)
+  const [pendingKeyRename, setPendingKeyRename] = useState<{ index: number; oldName: string; newName: string } | null>(null)
 
   const keyUsage = useMemo(() => {
     const usage: Record<string, number> = {}
@@ -93,6 +96,43 @@ export default function EditProviderPage() {
       ...prev,
       api_keys: prev.api_keys.filter((_, i) => i !== index),
     }))
+  }
+
+  const handleEditKey = (index: number) => {
+    setEditingKeyIndex(index)
+  }
+
+  const handleUpdateKeyName = (index: number, newName: string) => {
+    setProvider((prev) => {
+      const nextKeys = [...prev.api_keys]
+      nextKeys[index] = { ...nextKeys[index], name: newName }
+      return { ...prev, api_keys: nextKeys }
+    })
+  }
+
+  const handleUpdateKeyValue = (index: number, newValue: string) => {
+    setProvider((prev) => {
+      const nextKeys = [...prev.api_keys]
+      nextKeys[index] = { ...nextKeys[index], value: newValue }
+      return { ...prev, api_keys: nextKeys }
+    })
+  }
+
+  const handleSaveKeyEdit = (index: number) => {
+    setEditingKeyIndex(null)
+  }
+
+  const handleCancelKeyEdit = (index: number) => {
+    // Restore original key data
+    const found = providers.find((p) => p.name === providerName)
+    if (found && found.api_keys[index]) {
+      setProvider((prev) => {
+        const nextKeys = [...prev.api_keys]
+        nextKeys[index] = { ...found.api_keys[index] }
+        return { ...prev, api_keys: nextKeys }
+      })
+    }
+    setEditingKeyIndex(null)
   }
 
   const handleAddService = () => {
@@ -195,6 +235,40 @@ export default function EditProviderPage() {
       return
     }
 
+    // Check for key name changes
+    const originalProvider = providers.find((p) => p.name === providerName)
+    if (originalProvider) {
+      const keyNameChanges: Array<{ oldName: string; newName: string; affectedUsers: number }> = []
+
+      provider.api_keys.forEach((key, index) => {
+        const originalKey = originalProvider.api_keys[index]
+        if (originalKey && originalKey.name !== key.name) {
+          const affectedCount = keyUsage[originalKey.name] ?? 0
+          if (affectedCount > 0) {
+            keyNameChanges.push({
+              oldName: originalKey.name,
+              newName: key.name,
+              affectedUsers: affectedCount,
+            })
+          }
+        }
+      })
+
+      // If there are key name changes affecting users, show confirmation
+      if (keyNameChanges.length > 0) {
+        const totalAffected = keyNameChanges.reduce((sum, change) => sum + change.affectedUsers, 0)
+        const changesList = keyNameChanges.map(c => `"${c.oldName}" → "${c.newName}"`).join(", ")
+
+        if (!confirm(
+          `Warning: Renaming keys will update ${totalAffected} user route(s).\n\n` +
+          `Changes: ${changesList}\n\n` +
+          `This will automatically update all affected users. Continue?`
+        )) {
+          return
+        }
+      }
+    }
+
     setIsSaving(true)
     try {
       const payload: Provider = {
@@ -209,7 +283,50 @@ export default function EditProviderPage() {
         })),
       }
 
+      // Update provider first
       await updateProvider(providerName, payload)
+
+      // If there were key name changes, update all affected users
+      if (originalProvider) {
+        const keyNameMap = new Map<string, string>() // oldName -> newName
+
+        provider.api_keys.forEach((key, index) => {
+          const originalKey = originalProvider.api_keys[index]
+          if (originalKey && originalKey.name !== key.name) {
+            keyNameMap.set(originalKey.name, key.name)
+          }
+        })
+
+        if (keyNameMap.size > 0) {
+          // Update all users that reference the renamed keys
+          const updatePromises = users
+            .filter((user) => {
+              return Object.values(user.services || {}).some(
+                (route) => route.provider_name === providerName && keyNameMap.has(route.provider_key_name)
+              )
+            })
+            .map(async (user) => {
+              const updatedServices = { ...user.services }
+              Object.keys(updatedServices).forEach((serviceType) => {
+                const route = updatedServices[serviceType]
+                if (route.provider_name === providerName && keyNameMap.has(route.provider_key_name)) {
+                  updatedServices[serviceType] = {
+                    ...route,
+                    provider_key_name: keyNameMap.get(route.provider_key_name)!,
+                  }
+                }
+              })
+
+              return updateUser(user.name, {
+                ...user,
+                services: updatedServices,
+              })
+            })
+
+          await Promise.all(updatePromises)
+        }
+      }
+
       setServiceFieldErrors(payload.services.map(() => ({})))
       router.push(withBasePath("/providers"))
     } catch (err) {
@@ -243,33 +360,98 @@ export default function EditProviderPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-3">
-            {provider.api_keys.map((key, idx) => (
-              <div key={idx} className="flex items-center justify-between bg-secondary/50 px-4 py-3 rounded-sm gap-4">
-                <div className="flex-1 grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Key Name</p>
-                    <p className="font-mono text-sm font-medium">{key.name}</p>
+            {provider.api_keys.map((key, idx) => {
+              const isEditing = editingKeyIndex === idx
+              const originalProvider = providers.find((p) => p.name === providerName)
+              const originalKey = originalProvider?.api_keys[idx]
+
+              return (
+                <div key={idx} className="flex items-center justify-between bg-secondary/50 px-4 py-3 rounded-sm gap-4">
+                  <div className="flex-1 grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Key Name</p>
+                      {isEditing ? (
+                        <Input
+                          value={key.name}
+                          onChange={(e) => handleUpdateKeyName(idx, e.target.value)}
+                          className="font-mono text-sm"
+                          placeholder="Key name"
+                        />
+                      ) : (
+                        <p className="font-mono text-sm font-medium">{key.name}</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Key Value</p>
+                      {isEditing ? (
+                        <Input
+                          value={key.value}
+                          onChange={(e) => handleUpdateKeyValue(idx, e.target.value)}
+                          className="font-mono text-sm"
+                          placeholder="Key value"
+                          type="password"
+                        />
+                      ) : (
+                        <p className="font-mono text-sm">{maskApiKey(key.value)}</p>
+                      )}
+                    </div>
+                    <div className="col-span-2 text-xs text-muted-foreground">
+                      {keyUsage[key.name] ? `${keyUsage[key.name]} user(s) referencing this key` : "Not referenced by any user"}
+                      {isEditing && originalKey && originalKey.name !== key.name && (keyUsage[originalKey.name] ?? 0) > 0 && (
+                        <span className="text-warning ml-2">
+                          ⚠️ Renaming will update {keyUsage[originalKey.name]} user route(s)
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Key Value</p>
-                    <p className="font-mono text-sm">{maskApiKey(key.value)}</p>
-                  </div>
-                  <div className="col-span-2 text-xs text-muted-foreground">
-                    {keyUsage[key.name] ? `${keyUsage[key.name]} user(s) referencing this key` : "Not referenced by any user"}
+                  <div className="flex gap-2">
+                    {isEditing ? (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleSaveKeyEdit(idx)}
+                          className="text-primary"
+                          title="Save changes"
+                        >
+                          <Save className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleCancelKeyEdit(idx)}
+                          className="text-muted-foreground"
+                          title="Cancel editing"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEditKey(idx)}
+                          title="Edit key"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleRemoveKey(idx)}
+                          className="text-destructive hover:text-destructive"
+                          disabled={(keyUsage[key.name] ?? 0) > 0}
+                          title={(keyUsage[key.name] ?? 0) > 0 ? "该 Key 正被用户引用，无法删除" : "Delete key"}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleRemoveKey(idx)}
-                  className="text-destructive hover:text-destructive"
-                  disabled={(keyUsage[key.name] ?? 0) > 0}
-                  title={(keyUsage[key.name] ?? 0) > 0 ? "该 Key 正被用户引用，需先更新对应路由" : undefined}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
           <div className="space-y-3 pt-2 border-t">
