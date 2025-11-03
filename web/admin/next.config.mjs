@@ -3,8 +3,11 @@ const isProd = process.env.NODE_ENV === 'production'
 
 const nextConfig = {
   output: isProd ? 'export' : undefined,
-  // Note: basePath is not set because the backend serves the UI at /piadmin/
-  // and strips the prefix before serving static files
+  // basePath ensures all assets and links are prefixed with /piadmin
+  basePath: isProd ? '/piadmin' : undefined,
+  assetPrefix: isProd ? '/piadmin' : undefined,
+  // Note: NEXT_PUBLIC_BASE_PATH is NOT set here to avoid double basePath
+  // The basePath config above already handles prefixing for Next.js routing
   typescript: {
     ignoreBuildErrors: true,
   },
