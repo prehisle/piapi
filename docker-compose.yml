@@ -2,8 +2,13 @@ version: '3.9'
 
 services:
   piapi:
-    image: ghcr.io/prehisle/piapi:main
-    pull_policy: always
+    # Option 1: Use remote image (requires push to trigger GitHub Actions)
+    # image: ghcr.io/prehisle/piapi:main
+    # pull_policy: always
+
+    # Option 2: Build locally (includes latest changes)
+    build: .
+
     container_name: piapi-gateway
     ports:
       - "9200:9200"
@@ -11,4 +16,5 @@ services:
       - ./config.yaml:/app/config.yaml:ro
     environment:
       - TZ=UTC
+      - PIAPI_ADMIN_TOKEN=${PIAPI_ADMIN_TOKEN:-your-secret-token-here}
     restart: unless-stopped
