@@ -154,16 +154,16 @@ export function UsersTable({ users, providers, onAdd, onUpdate, onDelete }: User
 
   const copyUserConfig = async (user: User) => {
     const services = Object.entries(user.services || {})
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE ?? window.location.origin
     const lines: string[] = []
     lines.push(`User: ${user.name}`)
     lines.push(`API Key: ${user.api_key}`)
 
     if (services.length > 0) {
       lines.push("Services:")
-      services.forEach(([serviceType, route]) => {
-        const provider = providerMap.get(route.provider_name)
-        const service = provider?.services.find((svc) => svc.type === serviceType)
-        const url = service?.base_url ?? "(未知 URL)"
+      services.forEach(([serviceType]) => {
+        const normalizedType = serviceType.replace(/^\//, "")
+        const url = `${baseUrl}/piapi/${normalizedType}`
         lines.push(`- ${serviceType}: ${url}`)
       })
     } else {
