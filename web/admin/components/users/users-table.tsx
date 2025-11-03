@@ -41,6 +41,16 @@ interface RouteFormEntry {
 
 const createEmptyRoute = (): RouteFormEntry => ({ service: "", provider: "", key: "" })
 
+const generateApiKey = () => {
+  if (typeof window !== "undefined" && window.crypto?.getRandomValues) {
+    const bytes = new Uint8Array(16)
+    window.crypto.getRandomValues(bytes)
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")
+    return `piapi_key_${hex}`
+  }
+  return `piapi_key_${Math.random().toString(36).slice(2)}`
+}
+
 const routesToServicesMap = (routes: RouteFormEntry[]): User["services"] => {
   const map: User["services"] = {}
   routes.forEach((route) => {
@@ -67,7 +77,7 @@ const normalizeRoutesFromUser = (user: User): RouteFormEntry[] => {
 export function UsersTable({ users, providers, onAdd, onUpdate, onDelete }: UsersTableProps) {
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set())
   const [isOpen, setIsOpen] = useState(false)
-  const [formData, setFormData] = useState<User>({ name: "", api_key: "", services: {} })
+  const [formData, setFormData] = useState<User>({ name: "", api_key: generateApiKey(), services: {} })
   const [errors, setErrors] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [routes, setRoutes] = useState<RouteFormEntry[]>([createEmptyRoute()])
@@ -441,8 +451,9 @@ export function UsersTable({ users, providers, onAdd, onUpdate, onDelete }: User
     if (!formData.name.trim()) {
       newErrors.push("Username is required")
     }
+    // API key 始终自动生成，此处仅确保存在
     if (!formData.api_key.trim()) {
-      newErrors.push("API key is required")
+      newErrors.push("API key generation failed")
     }
     const routeErrors = validateRoutes(routes)
     newErrors.push(...routeErrors)
@@ -464,14 +475,14 @@ export function UsersTable({ users, providers, onAdd, onUpdate, onDelete }: User
         }
       })
 
-      await Promise.resolve(
-        onAdd({
-          name: formData.name.trim(),
-          api_key: formData.api_key.trim(),
-          services: servicesMap,
-        })
-      )
-      setFormData({ name: "", api_key: "", services: {} })
+    await Promise.resolve(
+      onAdd({
+        name: formData.name.trim(),
+        api_key: formData.api_key.trim(),
+        services: servicesMap,
+      })
+    )
+      setFormData({ name: "", api_key: generateApiKey(), services: {} })
       setRoutes([createEmptyRoute()])
       setErrors([])
       setIsOpen(false)
@@ -495,7 +506,7 @@ export function UsersTable({ users, providers, onAdd, onUpdate, onDelete }: User
           onOpenChange={(open) => {
             setIsOpen(open)
             if (!open) {
-              setFormData({ name: "", api_key: "", services: {} })
+              setFormData({ name: "", api_key: generateApiKey(), services: {} })
               setRoutes([createEmptyRoute()])
               setErrors([])
             }
@@ -524,12 +535,19 @@ export function UsersTable({ users, providers, onAdd, onUpdate, onDelete }: User
               </div>
               <div>
                 <label className="text-sm font-medium">API Key</label>
-                <Input
-                  value={formData.api_key}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, api_key: e.target.value }))}
-                  placeholder="e.g., sk_live_..."
-                  className="mt-2"
-                />
+                <div className="mt-2 flex gap-2">
+                  <Input value={formData.api_key} readOnly className="font-mono" />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setFormData((prev) => ({ ...prev, api_key: generateApiKey() }))
+                    }}
+                  >
+                    Regenerate
+                  </Button>
+                </div>
               </div>
               {renderRoutesForm(
                 routes,
