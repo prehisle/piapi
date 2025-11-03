@@ -109,7 +109,10 @@ export function RoutingTable({ strategies, providers, onAdd, onUpdate, onDelete 
                   <select
                     value={formData.provider}
                     onChange={(e) => {
-                      setFormData({ ...formData, provider: e.target.value, api_key: "" })
+                      const providerName = e.target.value
+                      const provider = providers.find((p) => p.name === providerName)
+                      const firstKey = provider?.api_keys[0]?.name || ""
+                      setFormData({ ...formData, provider: providerName, api_key: firstKey })
                     }}
                     className="w-full px-3 py-2 border border-border rounded-sm bg-background text-sm"
                   >
@@ -180,7 +183,10 @@ export function RoutingTable({ strategies, providers, onAdd, onUpdate, onDelete 
                       <select
                         value={formData.provider}
                         onChange={(e) => {
-                          setFormData({ ...formData, provider: e.target.value, api_key: "" })
+                          const providerName = e.target.value
+                          const provider = providers.find((p) => p.name === providerName)
+                          const firstKey = provider?.api_keys[0]?.name || ""
+                          setFormData({ ...formData, provider: providerName, api_key: firstKey })
                         }}
                         className="w-full px-3 py-2 border border-border rounded-sm bg-background text-sm"
                       >
