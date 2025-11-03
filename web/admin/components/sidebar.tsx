@@ -2,17 +2,27 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, Package, Users, UserCheck } from "lucide-react"
+import { Users, UserCheck } from "lucide-react"
+
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? ""
 
 export function Sidebar() {
   const pathname = usePathname()
 
   const links = [
-    { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/admin/services", label: "Services", icon: Package },
-    { href: "/admin/providers", label: "Providers", icon: Users },
-    { href: "/admin/users", label: "Users", icon: UserCheck },
+    { href: "/providers", label: "Providers", icon: Users },
+    { href: "/users", label: "Users", icon: UserCheck },
   ]
+
+  const normalizePath = (path: string) => {
+    if (basePath && path.startsWith(basePath)) {
+      const sliced = path.slice(basePath.length)
+      return sliced.startsWith("/") ? sliced : `/${sliced}`
+    }
+    return path
+  }
+
+  const currentPath = normalizePath(pathname)
 
   return (
     <aside className="w-64 border-r border-border bg-sidebar flex flex-col">
@@ -25,7 +35,8 @@ export function Sidebar() {
       <nav className="flex-1 px-4 py-6 space-y-2">
         {links.map((link) => {
           const Icon = link.icon
-          const isActive = pathname === link.href || (link.href !== "/admin" && pathname.startsWith(link.href))
+          const isActive =
+            currentPath === link.href || (link.href !== "/" && currentPath.startsWith(`${link.href}/`))
 
           return (
             <Link

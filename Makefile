@@ -6,7 +6,7 @@ LISTEN_ADDR ?= :9200
 ADMIN_UI_DIR := web/admin
 ADMIN_UI_DIST := internal/adminui/dist
 
-.PHONY: all build build-skip-admin test run docker-build clean admin-install admin-build admin-clean
+.PHONY: all build build-skip-admin test run docker-build clean admin-install admin-build admin-clean dev-backend dev-frontend
 
 all: build
 
@@ -45,3 +45,9 @@ test:
 
 docker-build:
 	docker build -t $(IMAGE) .
+
+dev-backend:
+	GOFLAGS=-mod=mod go run github.com/air-verse/air@latest -c ./.air.toml
+
+dev-frontend:
+	cd $(ADMIN_UI_DIR) && pnpm dev

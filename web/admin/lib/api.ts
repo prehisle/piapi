@@ -46,7 +46,8 @@ class ApiClient {
 
   constructor() {
     // Base URL for admin API
-    this.baseURL = '/admin/api'
+    const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? ''
+    this.baseURL = `${basePath}/api`
 
     // Load token from localStorage if available
     if (typeof window !== 'undefined') {
@@ -72,18 +73,16 @@ class ApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const headers: HeadersInit = {
-      ...options.headers,
-    }
+    const headers = new Headers(options.headers as HeadersInit)
 
     if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`
+      headers.set('Authorization', `Bearer ${this.token}`)
     }
 
     if (options.method && options.method !== 'GET' && options.body) {
-      if (typeof options.body === 'string' && !headers['Content-Type']) {
+      if (typeof options.body === 'string' && !headers.has('Content-Type')) {
         // Default to JSON for string bodies
-        headers['Content-Type'] = 'application/json'
+        headers.set('Content-Type', 'application/json')
       }
     }
 
@@ -184,6 +183,57 @@ class ApiClient {
   }
 
   /**
+   * Helper: Add a user to the configuration
+   */
+  async addUser(user: User): Promise<void> {
+    const config = await this.getConfig()
+    if (!config.users) {
+      config.users = []
+    }
+    const normalized: User = {
+      ...user,
+      services: user.services ?? {},
+    }
+    config.users.push(normalized)
+    const yaml = this.configToYAML(config)
+    await this.updateConfigRaw(yaml)
+  }
+
+  /**
+   * Helper: Update a user in the configuration
+   */
+  async updateUser(oldName: string, user: User): Promise<void> {
+    const config = await this.getConfig()
+    if (!config.users) {
+      throw new Error('No users in configuration')
+    }
+    const index = config.users.findIndex((u) => u.name === oldName)
+    if (index === -1) {
+      throw new Error(`User "${oldName}" not found`)
+    }
+    const normalized: User = {
+      ...user,
+      services: user.services ?? {},
+    }
+    config.users[index] = normalized
+    const yaml = this.configToYAML(config)
+    await this.updateConfigRaw(yaml)
+  }
+
+  /**
+   * Helper: Delete a user from the configuration
+   */
+  async deleteUser(name: string): Promise<void> {
+    const config = await this.getConfig()
+    if (!config.users) {
+      throw new Error('No users to delete')
+    }
+    config.users = config.users.filter((u) => u.name !== name)
+    const yaml = this.configToYAML(config)
+    await this.updateConfigRaw(yaml)
+  }
+
+  /**
    * Convert Config object to YAML string
    * Basic implementation - you may want to use a proper YAML library like js-yaml
    */
@@ -199,7 +249,7 @@ class ApiClient {
         for (const [keyName, keyValue] of Object.entries(provider.api_keys)) {
           yaml += `        ${keyName}: ${keyValue}\n`
         }
-        if (provider.services.length > 0) {
+        if (provider.services && provider.services.length > 0) {
           yaml += `      services:\n`
           for (const service of provider.services) {
             yaml += `        - type: ${service.type}\n`

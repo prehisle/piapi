@@ -2,7 +2,7 @@
 
 import { useCallback } from "react"
 import useSWR from "swr"
-import { apiClient, type Provider as ApiProvider } from "@/lib/api"
+import { apiClient, type Provider as ApiProvider, type Service as ApiService } from "@/lib/api"
 
 // Frontend representation with transformed API keys structure
 export interface ApiKey {
@@ -10,10 +10,17 @@ export interface ApiKey {
   value: string
 }
 
+export type ProviderServiceType = "claude_code" | "codex"
+
+export interface ProviderService {
+  type: ProviderServiceType
+  base_url: string
+}
+
 export interface Provider {
   name: string
   api_keys: ApiKey[]
-  services: string[]
+  services: ProviderService[]
 }
 
 // Transform backend Provider to frontend format
@@ -24,8 +31,11 @@ function transformProvider(apiProvider: ApiProvider): Provider {
     value,
   }))
 
-  // Extract service types
-  const services = apiProvider.services.map((s) => s.type)
+  // Extract services with base URLs
+  const services = (apiProvider.services || []).map((s: ApiService) => ({
+    type: s.type as ProviderServiceType,
+    base_url: s.base_url,
+  }))
 
   return {
     name: apiProvider.name,
@@ -43,11 +53,9 @@ function untransformProvider(provider: Provider): ApiProvider {
   })
 
   // Convert service types to full service objects
-  // For now, we create minimal service configs with empty base_url
-  // These can be edited later to add the full configuration
-  const services = provider.services.map((type) => ({
-    type,
-    base_url: `https://example.com/${type}/v1`, // Placeholder URL
+  const services = provider.services.map((service) => ({
+    type: service.type,
+    base_url: service.base_url,
     auth: {
       mode: "header",
       name: "Authorization",
@@ -64,7 +72,7 @@ function untransformProvider(provider: Provider): ApiProvider {
 
 export function useProviders() {
   const { data, error, mutate } = useSWR(
-    "/admin/api/config",
+    "config",
     async () => {
       const config = await apiClient.getConfig()
       // Handle null providers from empty config

@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import type { Provider } from "@/hooks/use-providers"
+import type { Provider, ProviderServiceType } from "@/hooks/use-providers"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import {
@@ -25,6 +25,23 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Plus, Edit, Trash2 } from "lucide-react"
 import { useState } from "react"
+import { cn } from "@/lib/utils"
+
+const SERVICE_OPTIONS: ProviderServiceType[] = ["claude_code", "codex"]
+
+interface ProviderFormService {
+  type: ProviderServiceType | ""
+  base_url: string
+}
+
+interface ServiceFieldError {
+  type?: string
+  base_url?: string
+}
+
+type ProviderFormData = Omit<Provider, "services"> & {
+  services: ProviderFormService[]
+}
 
 interface ProvidersListProps {
   providers: Provider[]
@@ -34,13 +51,14 @@ interface ProvidersListProps {
 
 export function ProvidersList({ providers, onAdd, onDelete }: ProvidersListProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const [formData, setFormData] = useState<Provider>({
+  const [formData, setFormData] = useState<ProviderFormData>({
     name: "",
     api_keys: [],
     services: [],
   })
   const [errors, setErrors] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [serviceFieldErrors, setServiceFieldErrors] = useState<ServiceFieldError[]>([])
 
   const handleAddApiKey = () => {
     setFormData({
@@ -65,14 +83,32 @@ export function ProvidersList({ providers, onAdd, onDelete }: ProvidersListProps
   const handleAddService = () => {
     setFormData({
       ...formData,
-      services: [...formData.services, ""],
+      services: [...formData.services, { type: "", base_url: "" }],
     })
+    setServiceFieldErrors((prev) => [...prev, {}])
   }
 
-  const handleUpdateService = (index: number, value: string) => {
+  const handleUpdateService = (index: number, field: "type" | "base_url", value: string) => {
     const newServices = [...formData.services]
-    newServices[index] = value
+    const updated = { ...newServices[index] }
+    if (field === "type") {
+      updated.type = value as ProviderFormService["type"]
+    } else {
+      updated.base_url = value
+    }
+    newServices[index] = updated
     setFormData({ ...formData, services: newServices })
+    setServiceFieldErrors((prev) => {
+      const next = [...prev]
+      if (!next[index]) {
+        next[index] = {}
+      }
+      next[index] = {
+        ...next[index],
+        [field]: undefined,
+      }
+      return next
+    })
   }
 
   const handleRemoveService = (index: number) => {
@@ -80,10 +116,12 @@ export function ProvidersList({ providers, onAdd, onDelete }: ProvidersListProps
       ...formData,
       services: formData.services.filter((_, i) => i !== index),
     })
+    setServiceFieldErrors((prev) => prev.filter((_, i) => i !== index))
   }
 
   const validateForm = (): boolean => {
     const newErrors: string[] = []
+    const fieldErrors: ServiceFieldError[] = formData.services.map(() => ({}))
 
     if (!formData.name.trim()) {
       newErrors.push("Provider name is required")
@@ -102,7 +140,32 @@ export function ProvidersList({ providers, onAdd, onDelete }: ProvidersListProps
       }
     })
 
+    if (formData.services.length === 0) {
+      newErrors.push("At least one service is required")
+    }
+
+    const seenServices = new Set<ProviderServiceType>()
+    formData.services.forEach((service, index) => {
+      const trimmedBaseURL = service.base_url.trim()
+
+      if (!service.type) {
+        newErrors.push(`Service #${index + 1}: type is required`)
+        fieldErrors[index].type = "请选择服务类型"
+      } else if (seenServices.has(service.type as ProviderServiceType)) {
+        newErrors.push(`Service type "${service.type}" already added`)
+        fieldErrors[index].type = "服务类型已存在"
+      } else {
+        seenServices.add(service.type as ProviderServiceType)
+      }
+
+      if (!trimmedBaseURL) {
+        newErrors.push(`Service #${index + 1}: base URL is required`)
+        fieldErrors[index].base_url = "请填写服务 URL"
+      }
+    })
+
     setErrors(newErrors)
+    setServiceFieldErrors(fieldErrors)
     return newErrors.length === 0
   }
 
@@ -111,9 +174,22 @@ export function ProvidersList({ providers, onAdd, onDelete }: ProvidersListProps
 
     setIsSubmitting(true)
     try {
-      await Promise.resolve(onAdd(formData))
+      const providerPayload: Provider = {
+        name: formData.name.trim(),
+        api_keys: formData.api_keys.map((key) => ({
+          name: key.name.trim(),
+          value: key.value.trim(),
+        })),
+        services: formData.services.map((service) => ({
+          type: service.type as ProviderServiceType,
+          base_url: service.base_url.trim(),
+        })),
+      }
+
+      await Promise.resolve(onAdd(providerPayload))
       setFormData({ name: "", api_keys: [], services: [] })
       setErrors([])
+      setServiceFieldErrors([])
       setIsOpen(false)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to create provider"
@@ -126,6 +202,7 @@ export function ProvidersList({ providers, onAdd, onDelete }: ProvidersListProps
   const handleCancel = () => {
     setFormData({ name: "", api_keys: [], services: [] })
     setErrors([])
+    setServiceFieldErrors([])
     setIsOpen(false)
   }
 
@@ -205,36 +282,89 @@ export function ProvidersList({ providers, onAdd, onDelete }: ProvidersListProps
               {/* Services */}
               <div>
                 <div className="flex justify-between items-center mb-2">
-                  <label className="text-sm font-medium">Services (Optional)</label>
-                  <Button type="button" variant="outline" size="sm" onClick={handleAddService}>
+                  <label className="text-sm font-medium">Services</label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAddService}
+                    disabled={formData.services.length >= SERVICE_OPTIONS.length}
+                  >
                     <Plus className="w-4 h-4 mr-1" />
                     Add Service
                   </Button>
                 </div>
-                {formData.services.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No services configured. Add later if needed.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {formData.services.map((service, index) => (
-                      <div key={index} className="flex gap-2 items-center">
-                        <Input
-                          placeholder="Service type (e.g., codex, claude_code)"
-                          value={service}
-                          onChange={(e) => handleUpdateService(index, e.target.value)}
-                          className="flex-1"
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemoveService(index)}
+                <div className="space-y-2">
+                  {formData.services.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Add at least one service to enable routing.</p>
+                  ) : (
+                    formData.services.map((service, index) => {
+                      const fieldError = serviceFieldErrors[index] || {}
+                      return (
+                        <div
+                          key={index}
+                          className={cn(
+                            "flex flex-col gap-2 md:flex-row md:items-center md:gap-3 border rounded-sm p-3",
+                            fieldError.type || fieldError.base_url ? "border-destructive/40" : "border-border/50"
+                          )}
                         >
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                          <div className="flex-1 space-y-2">
+                            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                              Service Type
+                            </label>
+                            <select
+                              value={service.type}
+                              onChange={(e) => handleUpdateService(index, "type", e.target.value)}
+                              className={cn(
+                                "w-full px-3 py-2 border rounded-sm bg-background text-sm",
+                                fieldError.type ? "border-destructive focus-visible:ring-destructive/40" : "border-border"
+                              )}
+                            >
+                              <option value="">Select a service</option>
+                              {SERVICE_OPTIONS.map((option) => (
+                                <option
+                                  key={option}
+                                  value={option}
+                                disabled={
+                                  service.type !== option &&
+                                  formData.services.some((s, i) => i !== index && s.type === option)
+                                }
+                              >
+                                {option}
+                              </option>
+                            ))}
+                            </select>
+                            {fieldError.type && <p className="text-xs text-destructive">{fieldError.type}</p>}
+                          </div>
+                          <div className="flex-1 space-y-2">
+                            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                              Service URL (必填)
+                            </label>
+                            <Input
+                              placeholder="https://your-service-endpoint"
+                              value={service.base_url}
+                              onChange={(e) => handleUpdateService(index, "base_url", e.target.value)}
+                              className={cn(
+                                "w-full",
+                                fieldError.base_url ? "border-destructive focus-visible:ring-destructive/40" : undefined
+                              )}
+                            />
+                            {fieldError.base_url && <p className="text-xs text-destructive">{fieldError.base_url}</p>}
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveService(index)}
+                            className="self-start mt-6 md:mt-7"
+                          >
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
               </div>
 
               {/* Errors */}
@@ -296,10 +426,16 @@ export function ProvidersList({ providers, onAdd, onDelete }: ProvidersListProps
                 <p className="text-xs font-medium text-muted-foreground uppercase mb-2">Services</p>
                 <div className="flex flex-wrap gap-2">
                   {provider.services.length > 0 ? (
-                    provider.services.map((service, idx) => (
-                      <span key={idx} className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-sm">
-                        {service}
-                      </span>
+                    provider.services.map((service) => (
+                      <div
+                        key={service.type}
+                        className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-sm max-w-full"
+                      >
+                        <div className="font-semibold">{service.type}</div>
+                        <div className="text-muted-foreground truncate max-w-[160px]" title={service.base_url}>
+                          {service.base_url}
+                        </div>
+                      </div>
                     ))
                   ) : (
                     <p className="text-xs text-muted-foreground">No services</p>
@@ -308,7 +444,7 @@ export function ProvidersList({ providers, onAdd, onDelete }: ProvidersListProps
               </div>
 
               <div className="flex gap-2 pt-4">
-                <Link href={`/admin/providers/edit?name=${encodeURIComponent(provider.name)}`} className="flex-1">
+                <Link href={`/providers/edit?name=${encodeURIComponent(provider.name)}`} className="flex-1">
                   <Button variant="outline" size="sm" className="w-full gap-2 bg-transparent">
                     <Edit className="w-4 h-4" />
                     Edit

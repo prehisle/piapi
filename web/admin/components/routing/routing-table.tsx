@@ -53,7 +53,7 @@ export function RoutingTable({ strategies, providers, onAdd, onUpdate, onDelete 
   }
 
   const selectedProvider = providers.find((p) => p.name === formData.provider)
-  const availableKeys = selectedProvider?.api_keys || []
+  const availableKeys = selectedProvider ? selectedProvider.api_keys.map((key) => key.name) : []
 
   return (
     <div className="space-y-4">

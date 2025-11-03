@@ -5,7 +5,7 @@ bin/
 .DS_Store
 config.yaml
 tmp/
-piapi
+/piapi
 
 # Frontend build artifacts
 node_modules/
@@ -18,3 +18,5 @@ internal/adminui/dist/
 .playwright-mcp/
 config-empty.yaml
 config.yaml.backup
+tmp/
+config.dev.yaml

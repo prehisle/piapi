@@ -29,7 +29,7 @@ export default function LoginPage() {
 
       // If successful, mark as authenticated and redirect
       localStorage.setItem("admin_auth", "true")
-      router.push("/admin")
+      router.push("/providers")
     } catch (err) {
       setError("Invalid admin token")
       apiClient.clearToken()

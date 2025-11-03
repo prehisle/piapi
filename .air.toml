@@ -1,0 +1,16 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/piapi-dev ./cmd/piapi"
+bin = "./tmp/piapi-dev"
+full_bin = "PIAPI_ADMIN_TOKEN=${PIAPI_ADMIN_TOKEN:-piapi} ./tmp/piapi-dev --config ${CONFIG:-config.dev.yaml} --listen ${LISTEN_ADDR:-:9200}"
+include_ext = ["go", "yaml", "yml"]
+exclude_dir = ["tmp", "web", ".git", "docs"]
+
+[log]
+time = true
+color = "auto"
+
+[misc]
+clean_on_exit = true

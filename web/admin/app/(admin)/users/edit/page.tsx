@@ -18,7 +18,7 @@ export default function EditUserPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="outline" size="sm" onClick={() => router.push("/admin/users")} className="gap-2">
+        <Button variant="outline" size="sm" onClick={() => router.push("/users")} className="gap-2">
           <ArrowLeft className="w-4 h-4" />
           Back
         </Button>
