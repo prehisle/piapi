@@ -120,6 +120,20 @@ docker compose up -d
 
 **启用管理界面**：在 `.env` 文件中设置 `PIAPI_ADMIN_TOKEN` 后，访问 `http://localhost:9200/piadmin`。
 
+**重要 - 文件权限**：
+
+Docker 容器以非 root 用户（UID 65532）运行。如果使用 bind mount，需要确保 config.yaml 有正确的权限：
+
+```bash
+# 设置文件所有者为容器用户
+sudo chown 65532:65532 config.yaml
+
+# 或者给所有用户读写权限（不太安全）
+chmod 666 config.yaml
+```
+
+否则通过管理界面更新配置时会出现 "permission denied" 错误。
+
 ### 2.2 从 GHCR 获取镜像
 
 GitHub Actions 会在推送到 `main` 或创建符合 `v*` 模式的标签时，自动将容器镜像发布到 `ghcr.io/prehisle/piapi`。
