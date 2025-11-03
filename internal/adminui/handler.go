@@ -29,11 +29,11 @@ type spaHandler struct {
 }
 
 func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Strip /admin prefix and serve from filesystem
-	http.StripPrefix("/admin", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// Strip /piadmin prefix and serve from filesystem
+	http.StripPrefix("/piadmin", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		if path == "" || path == "/" {
-			path = "/admin.html"
+			path = "/index.html"
 		}
 
 		// Remove leading slash for embed.FS (it requires relative paths)
@@ -70,13 +70,20 @@ func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					http.Error(w, "Not Found", http.StatusNotFound)
 					return
 				}
-				// Otherwise, serve admin.html for SPA routing
-				f, err = h.staticFS.Open("admin.html")
+				// Otherwise, serve index.html for SPA routing
+				f, err = h.staticFS.Open("index.html")
 				if err != nil {
 					http.Error(w, "Not Found", http.StatusNotFound)
 					return
 				}
-				path = "/admin.html"
+				path = "/index.html"
+			}
+		} else {
+			// File exists and is not a directory, reopen it
+			f, err = h.staticFS.Open(cleanPath)
+			if err != nil {
+				http.Error(w, "Not Found", http.StatusNotFound)
+				return
 			}
 		}
 		defer f.Close()
