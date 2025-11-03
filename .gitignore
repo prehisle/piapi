@@ -14,7 +14,11 @@ web/admin/.next/
 web/admin/out/
 
 # Embedded admin UI (copied from web/admin/out)
-internal/adminui/dist/
+internal/adminui/dist/*
+!internal/adminui/dist/.keep
+!internal/adminui/dist/admin.html
+!internal/adminui/dist/login.html
+!internal/adminui/dist/index.html
 .playwright-mcp/
 config-empty.yaml
 config.yaml.backup
