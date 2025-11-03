@@ -102,6 +102,17 @@ The service watches the config file and automatically reloads changes. Failed re
 
 ## Recent Work & Current Status (2025-11-03)
 
+### ✅ Latest: Security Enhancement - API Key Masking (2025-11-03 Session 3)
+
+**Security Improvements:**
+
+- **API Key Masking**: Implemented secure display of API keys in admin UI
+  - Added `maskApiKey()` utility function in `web/admin/lib/utils.ts`
+  - Shows only first 4 and last 4 characters (e.g., `sk-1***cdef`)
+  - Applied to provider list view and edit page
+  - Prevents shoulder surfing and accidental exposure in screenshots
+  - Full keys still used internally for API calls
+
 ### ✅ Completed: Admin UI Integration & Production Deployment Fixes
 
 **Latest Updates (2025-11-03 Session 2):**
