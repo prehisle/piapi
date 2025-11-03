@@ -21,3 +21,6 @@
 
 ## Security & Configuration Tips
 禁止提交真实密钥，改用本地 `.env` 或 CI 密钥管理。新增配置字段时同步更新 `config.yaml.example`，并在启动日志确认出现 `config reloaded` 验证热加载。使用 `docker run --rm -p 9200:9200 -v $(pwd)/config.yaml:/app/config.yaml ghcr.io/prehisle/piapi:main` 校验线上镜像兼容性。共享调试日志前需脱敏，并标注受影响的 provider 与环境，便于追踪。
+
+## 交互语言要求
+与用户交流时须全程使用中文，包括解释、总结与确认信息等所有互动环节。
