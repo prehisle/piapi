@@ -102,14 +102,15 @@ The service watches the config file and automatically reloads changes. Failed re
 
 ## Recent Work & Current Status (2025-11-03)
 
-### ✅ Latest: Editable API Keys with Batch Updates (2025-11-03 Session 4)
+### ✅ Latest: Editable API Keys with Batch Updates (2025-11-03 Session 4 - Updated)
 
 **Feature Implementation - Scheme C (Most Complete):**
 
-- **Editable API Keys**: Full editing support for Key Name and Key Value
-  - Edit button with inline editing mode (Save/Cancel)
-  - Password-type input for Key Value editing
+- **Direct Editing UX**: API keys always editable (like Services)
+  - No edit mode toggle - keys displayed as input fields
+  - Password-type input for Key Value
   - Real-time warning when renaming keys with user references
+  - Simplified UX with fewer clicks
 
 - **Batch User Updates**: Automatic cascade updates when renaming keys
   - Detects all Key Name changes
@@ -123,6 +124,12 @@ The service watches the config file and automatically reloads changes. Failed re
   - Scenarios: single rename, multiple renames, value-only changes, unused keys
 
 - **Documentation**: Complete usage guide in `API_KEY_EDIT_FEATURE.md`
+
+**UX Improvements**:
+- Consistent with Services section (both use direct editing)
+- Fewer clicks: no Edit/Save/Cancel buttons
+- Real-time feedback and warnings
+- Border color changes to indicate affected keys
 
 **Use Cases Supported**:
 1. API key rotation (change value only)
