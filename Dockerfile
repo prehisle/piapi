@@ -36,6 +36,9 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /piapi ./cmd/piapi
 FROM gcr.io/distroless/base-debian12:nonroot
 WORKDIR /app
 COPY --from=builder /piapi /app/piapi
+# Note: Running as nonroot (UID 65532) for security
+# Ensure host config.yaml is readable/writable by UID 65532
+# Run: sudo chown 65532:65532 config.yaml
 USER nonroot
 EXPOSE 9200
 ENTRYPOINT ["/app/piapi"]
