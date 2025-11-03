@@ -59,7 +59,8 @@ release: admin-build
 	mkdir -p $(RELEASE_DIR)
 	@set -e; \
 	for platform in $(RELEASE_PLATFORMS); do \
-		IFS=/ read -r os arch <<< "$$platform"; \
+		os=$${platform%/*}; \
+		arch=$${platform##*/}; \
 		output="$(APP_NAME)-$$os-$$arch"; \
 		bin_name="$(APP_NAME)"; \
 		if [ "$$os" = "windows" ]; then \
