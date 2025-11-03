@@ -152,6 +152,27 @@ export function UsersTable({ users, providers, onAdd, onUpdate, onDelete }: User
     await navigator.clipboard.writeText(text)
   }
 
+  const copyUserConfig = async (user: User) => {
+    const services = Object.entries(user.services || {})
+    const lines: string[] = []
+    lines.push(`User: ${user.name}`)
+    lines.push(`API Key: ${user.api_key}`)
+
+    if (services.length > 0) {
+      lines.push("Services:")
+      services.forEach(([serviceType, route]) => {
+        const provider = providerMap.get(route.provider_name)
+        const service = provider?.services.find((svc) => svc.type === serviceType)
+        const url = service?.base_url ?? "(未知 URL)"
+        lines.push(`- ${serviceType}: ${url}`)
+      })
+    } else {
+      lines.push("Services: (none)")
+    }
+
+    await copyToClipboard(lines.join("\n"))
+  }
+
   const renderRoutesForm = (
     routesState: RouteFormEntry[],
     updateFn: (index: number, field: keyof RouteFormEntry, value: string) => void,
@@ -611,16 +632,22 @@ export function UsersTable({ users, providers, onAdd, onUpdate, onDelete }: User
                             <Eye className="w-4 h-4 text-muted-foreground" />
                           )}
                         </button>
-                        <button
-                          onClick={() => copyToClipboard(user.api_key)}
-                          className="p-1 hover:bg-secondary/50 rounded-sm transition-colors"
-                          title="Copy to clipboard"
-                        >
-                          <Copy className="w-4 h-4 text-muted-foreground" />
-                        </button>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-right">
+                    </div>
+                  </td>
+                    <td className="px-6 py-4 text-right space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          void copyUserConfig(user)
+                        }}
+                        className="inline-flex items-center gap-1"
+                        title="复制用户配置"
+                      >
+                        <Copy className="w-4 h-4" />
+                        Copy
+                      </Button>
+
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <Button
