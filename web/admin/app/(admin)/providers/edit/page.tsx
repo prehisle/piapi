@@ -2,12 +2,13 @@
 
 import { useProviders } from "@/hooks/use-providers"
 import type { Provider, ProviderServiceType } from "@/hooks/use-providers"
+import { useUsers } from "@/hooks/use-users"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Trash2, Plus } from "lucide-react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { cn } from "@/lib/utils"
 
 const SERVICE_OPTIONS: ProviderServiceType[] = ["claude_code", "codex"]
@@ -31,6 +32,7 @@ export default function EditProviderPage() {
   const searchParams = useSearchParams()
   const providerName = searchParams.get("name") || ""
   const { providers, updateProvider } = useProviders()
+  const { users } = useUsers()
 
   const [provider, setProvider] = useState<ProviderFormData>({ name: "", api_keys: [], services: [] })
   const [newKeyName, setNewKeyName] = useState("")
@@ -38,6 +40,19 @@ export default function EditProviderPage() {
   const [errors, setErrors] = useState<string[]>([])
   const [isSaving, setIsSaving] = useState(false)
   const [serviceFieldErrors, setServiceFieldErrors] = useState<ServiceFieldError[]>([])
+
+  const keyUsage = useMemo(() => {
+    const usage: Record<string, number> = {}
+    users.forEach((user) => {
+      Object.values(user.services || {}).forEach((route) => {
+        if (route.provider_name === providerName) {
+          const keyName = route.provider_key_name
+          usage[keyName] = (usage[keyName] ?? 0) + 1
+        }
+      })
+    })
+    return usage
+  }, [users, providerName])
 
   useEffect(() => {
     const found = providers.find((p) => p.name === providerName)
@@ -67,6 +82,12 @@ export default function EditProviderPage() {
   }
 
   const handleRemoveKey = (index: number) => {
+    const keyName = provider.api_keys[index]?.name
+    if (keyName && (keyUsage[keyName] ?? 0) > 0) {
+      const message = `Cannot remove API key "${keyName}" while ${keyUsage[keyName]} user(s) reference it.`
+      setErrors((prev) => [message, ...prev])
+      return
+    }
     setProvider((prev) => ({
       ...prev,
       api_keys: prev.api_keys.filter((_, i) => i !== index),
@@ -227,12 +248,17 @@ export default function EditProviderPage() {
                     <p className="text-xs text-muted-foreground mb-1">Key Value</p>
                     <p className="font-mono text-sm">{key.value}</p>
                   </div>
+                  <div className="col-span-2 text-xs text-muted-foreground">
+                    {keyUsage[key.name] ? `${keyUsage[key.name]} user(s) referencing this key` : "Not referenced by any user"}
+                  </div>
                 </div>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => handleRemoveKey(idx)}
                   className="text-destructive hover:text-destructive"
+                  disabled={(keyUsage[key.name] ?? 0) > 0}
+                  title={(keyUsage[key.name] ?? 0) > 0 ? "该 Key 正被用户引用，需先更新对应路由" : undefined}
                 >
                   <Trash2 className="w-4 h-4" />
                 </Button>

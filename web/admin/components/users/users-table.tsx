@@ -154,7 +154,8 @@ export function UsersTable({ users, providers, onAdd, onUpdate, onDelete }: User
 
   const copyUserConfig = async (user: User) => {
     const services = Object.entries(user.services || {})
-    const baseUrl = process.env.NEXT_PUBLIC_API_BASE ?? window.location.origin
+    const fallbackOrigin = typeof window !== "undefined" ? window.location.origin : ""
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE ?? fallbackOrigin
     const lines: string[] = []
     lines.push(`User: ${user.name}`)
     lines.push(`API Key: ${user.api_key}`)
