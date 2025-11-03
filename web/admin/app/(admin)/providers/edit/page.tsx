@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { ArrowLeft, Trash2, Plus, Edit, Save, X } from "lucide-react"
+import { ArrowLeft, Trash2, Plus } from "lucide-react"
 import { useState, useEffect, useMemo } from "react"
 import { cn, maskApiKey } from "@/lib/utils"
 import { withBasePath } from "@/lib/base-path"
@@ -41,9 +41,6 @@ export default function EditProviderPage() {
   const [errors, setErrors] = useState<string[]>([])
   const [isSaving, setIsSaving] = useState(false)
   const [serviceFieldErrors, setServiceFieldErrors] = useState<ServiceFieldError[]>([])
-  const [editingKeyIndex, setEditingKeyIndex] = useState<number | null>(null)
-  const [showRenameConfirm, setShowRenameConfirm] = useState(false)
-  const [pendingKeyRename, setPendingKeyRename] = useState<{ index: number; oldName: string; newName: string } | null>(null)
 
   const keyUsage = useMemo(() => {
     const usage: Record<string, number> = {}
@@ -98,10 +95,6 @@ export default function EditProviderPage() {
     }))
   }
 
-  const handleEditKey = (index: number) => {
-    setEditingKeyIndex(index)
-  }
-
   const handleUpdateKeyName = (index: number, newName: string) => {
     setProvider((prev) => {
       const nextKeys = [...prev.api_keys]
@@ -116,23 +109,6 @@ export default function EditProviderPage() {
       nextKeys[index] = { ...nextKeys[index], value: newValue }
       return { ...prev, api_keys: nextKeys }
     })
-  }
-
-  const handleSaveKeyEdit = (index: number) => {
-    setEditingKeyIndex(null)
-  }
-
-  const handleCancelKeyEdit = (index: number) => {
-    // Restore original key data
-    const found = providers.find((p) => p.name === providerName)
-    if (found && found.api_keys[index]) {
-      setProvider((prev) => {
-        const nextKeys = [...prev.api_keys]
-        nextKeys[index] = { ...found.api_keys[index] }
-        return { ...prev, api_keys: nextKeys }
-      })
-    }
-    setEditingKeyIndex(null)
   }
 
   const handleAddService = () => {
@@ -361,94 +337,62 @@ export default function EditProviderPage() {
         <CardContent className="space-y-4">
           <div className="space-y-3">
             {provider.api_keys.map((key, idx) => {
-              const isEditing = editingKeyIndex === idx
               const originalProvider = providers.find((p) => p.name === providerName)
               const originalKey = originalProvider?.api_keys[idx]
+              const hasNameChanged = originalKey && originalKey.name !== key.name
+              const willAffectUsers = hasNameChanged && (keyUsage[originalKey.name] ?? 0) > 0
 
               return (
-                <div key={idx} className="flex items-center justify-between bg-secondary/50 px-4 py-3 rounded-sm gap-4">
-                  <div className="flex-1 grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Key Name</p>
-                      {isEditing ? (
-                        <Input
-                          value={key.name}
-                          onChange={(e) => handleUpdateKeyName(idx, e.target.value)}
-                          className="font-mono text-sm"
-                          placeholder="Key name"
-                        />
-                      ) : (
-                        <p className="font-mono text-sm font-medium">{key.name}</p>
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Key Value</p>
-                      {isEditing ? (
-                        <Input
-                          value={key.value}
-                          onChange={(e) => handleUpdateKeyValue(idx, e.target.value)}
-                          className="font-mono text-sm"
-                          placeholder="Key value"
-                          type="password"
-                        />
-                      ) : (
-                        <p className="font-mono text-sm">{maskApiKey(key.value)}</p>
-                      )}
-                    </div>
-                    <div className="col-span-2 text-xs text-muted-foreground">
-                      {keyUsage[key.name] ? `${keyUsage[key.name]} user(s) referencing this key` : "Not referenced by any user"}
-                      {isEditing && originalKey && originalKey.name !== key.name && (keyUsage[originalKey.name] ?? 0) > 0 && (
+                <div
+                  key={idx}
+                  className={cn(
+                    "border rounded-sm p-4 flex flex-col gap-3 md:flex-row md:items-end md:gap-4",
+                    willAffectUsers ? "border-warning/40" : "border-border/60"
+                  )}
+                >
+                  <div className="flex-1 space-y-2">
+                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Key Name
+                    </label>
+                    <Input
+                      value={key.name}
+                      onChange={(e) => handleUpdateKeyName(idx, e.target.value)}
+                      className="font-mono text-sm"
+                      placeholder="Key name (e.g., primary-key)"
+                    />
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Key Value
+                    </label>
+                    <Input
+                      value={key.value}
+                      onChange={(e) => handleUpdateKeyValue(idx, e.target.value)}
+                      className="font-mono text-sm"
+                      placeholder="API key value"
+                      type="password"
+                    />
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleRemoveKey(idx)}
+                    className="text-destructive hover:text-destructive md:self-center"
+                    disabled={(keyUsage[key.name] ?? 0) > 0}
+                    title={(keyUsage[key.name] ?? 0) > 0 ? "该 Key 正被用户引用，无法删除" : "Delete key"}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                  {(keyUsage[key.name] ?? 0) > 0 && (
+                    <div className="col-span-full text-xs text-muted-foreground">
+                      {keyUsage[key.name]} user(s) referencing this key
+                      {willAffectUsers && (
                         <span className="text-warning ml-2">
-                          ⚠️ Renaming will update {keyUsage[originalKey.name]} user route(s)
+                          ⚠️ Renaming will update {keyUsage[originalKey!.name]} user route(s)
                         </span>
                       )}
                     </div>
-                  </div>
-                  <div className="flex gap-2">
-                    {isEditing ? (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleSaveKeyEdit(idx)}
-                          className="text-primary"
-                          title="Save changes"
-                        >
-                          <Save className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleCancelKeyEdit(idx)}
-                          className="text-muted-foreground"
-                          title="Cancel editing"
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEditKey(idx)}
-                          title="Edit key"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleRemoveKey(idx)}
-                          className="text-destructive hover:text-destructive"
-                          disabled={(keyUsage[key.name] ?? 0) > 0}
-                          title={(keyUsage[key.name] ?? 0) > 0 ? "该 Key 正被用户引用，无法删除" : "Delete key"}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </>
-                    )}
-                  </div>
+                  )}
                 </div>
               )
             })}
