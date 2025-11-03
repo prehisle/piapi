@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Trash2, Plus } from "lucide-react"
 import { useState, useEffect, useMemo } from "react"
-import { cn } from "@/lib/utils"
+import { cn, maskApiKey } from "@/lib/utils"
 import { withBasePath } from "@/lib/base-path"
 
 const SERVICE_OPTIONS: ProviderServiceType[] = ["claude_code", "codex"]
@@ -252,7 +252,7 @@ export default function EditProviderPage() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground mb-1">Key Value</p>
-                    <p className="font-mono text-sm">{key.value}</p>
+                    <p className="font-mono text-sm">{maskApiKey(key.value)}</p>
                   </div>
                   <div className="col-span-2 text-xs text-muted-foreground">
                     {keyUsage[key.name] ? `${keyUsage[key.name]} user(s) referencing this key` : "Not referenced by any user"}

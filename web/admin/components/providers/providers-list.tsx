@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Plus, Edit, Trash2 } from "lucide-react"
 import { useState } from "react"
-import { cn } from "@/lib/utils"
+import { cn, maskApiKey } from "@/lib/utils"
 import { withBasePath } from "@/lib/base-path"
 
 const SERVICE_OPTIONS: ProviderServiceType[] = ["claude_code", "codex"]
@@ -413,7 +413,7 @@ export function ProvidersList({ providers, onAdd, onDelete }: ProvidersListProps
                           {typeof key === "object" && key.name ? key.name : "Key"}
                         </div>
                         <div className="text-foreground text-xs truncate">
-                          {typeof key === "object" && key.value ? key.value : String(key)}
+                          {typeof key === "object" && key.value ? maskApiKey(key.value) : maskApiKey(String(key))}
                         </div>
                       </div>
                     ))
