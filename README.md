@@ -246,6 +246,119 @@ make build-skip-admin
 make admin-clean
 ```
 
+### 7. 故障排除
+
+#### Admin UI 无法访问 (404)
+
+**症状**: 访问 `/piadmin` 返回 404 Not Found
+
+**解决方案**:
+```bash
+# 1. 检查环境变量是否设置
+docker compose logs piapi | grep "admin UI"
+# 应该看到: "admin UI enabled at /piadmin"
+
+# 2. 如果没有启用，设置 PIAPI_ADMIN_TOKEN
+echo "PIAPI_ADMIN_TOKEN=$(openssl rand -base64 32)" > .env
+docker compose restart piapi
+
+# 3. 确认使用正确的路径
+# 正确: http://your-host:9200/piadmin/
+# 错误: http://your-host:9200/admin/
+```
+
+#### 配置更新失败 (Permission Denied)
+
+**症状**: 通过管理界面更新配置时出现 "permission denied" 错误
+
+**原因**: Docker 容器以非 root 用户（UID 65532）运行，但配置文件属于 root
+
+**解决方案**:
+```bash
+# 方案 1: 修改文件所有者（推荐）
+sudo chown 65532:65532 config.yaml
+chmod 600 config.yaml
+
+# 方案 2: 允许所有用户读写（简单但不够安全）
+chmod 666 config.yaml
+
+# 重启容器应用更改
+docker compose restart piapi
+```
+
+#### 复制功能不工作
+
+**症状**: 点击"复制用户配置"按钮时报错
+
+**原因**: 在 HTTP 环境下，浏览器的 Clipboard API 不可用
+
+**解决方案**:
+- 确保使用最新版本（已包含 HTTP 环境的降级方案）
+- 或使用 HTTPS 访问
+- 或使用 localhost 访问
+
+#### 静态资源 404 (JS/CSS 文件)
+
+**症状**: 页面加载不完整，浏览器控制台显示 JS/CSS 404 错误
+
+**解决方案**:
+```bash
+# 1. 确保使用最新版本
+git pull
+docker compose build --no-cache
+
+# 2. 清除浏览器缓存
+# Chrome: Ctrl+Shift+Delete
+# Firefox: Ctrl+Shift+Delete
+
+# 3. 验证构建包含前端资源
+docker compose exec piapi ls -la /app/
+# 应该看到 piapi 可执行文件
+```
+
+#### API 请求失败 (404)
+
+**症状**: 登录后看到 API 请求失败
+
+**解决方案**:
+```bash
+# 1. 检查请求的 URL 路径
+# 浏览器开发者工具 -> Network
+# 应该是: /piadmin/api/config
+# 不应该是: /api/config 或 /admin/api/config
+
+# 2. 确保使用最新版本
+git pull
+docker compose build
+
+# 3. 验证 token 正确
+echo $PIAPI_ADMIN_TOKEN
+# 或
+cat .env | grep PIAPI_ADMIN_TOKEN
+```
+
+#### 使用远程镜像时缺少最新修复
+
+**症状**: 使用 `ghcr.io/prehisle/piapi:main` 时遇到已知问题
+
+**解决方案**:
+```bash
+# 切换到本地构建以获得最新修复
+cd /path/to/piapi
+
+# 修改 docker-compose.yml
+# 将 image: ghcr.io/prehisle/piapi:main
+# 改为 build: .
+
+# 或使用 sed 命令
+sed -i 's/image: ghcr.io\/prehisle\/piapi:main/build: ./g' docker-compose.yml
+sed -i '/pull_policy: always/d' docker-compose.yml
+
+# 构建并启动
+docker compose build
+docker compose up -d
+```
+
 ## 构建与测试
 
 ### 运行测试

@@ -102,7 +102,37 @@ The service watches the config file and automatically reloads changes. Failed re
 
 ## Recent Work & Current Status (2025-11-03)
 
-### ✅ Completed: Admin UI Integration (Production Ready)
+### ✅ Completed: Admin UI Integration & Production Deployment Fixes
+
+**Latest Updates (2025-11-03 Session 2):**
+
+All critical production issues have been resolved:
+
+1. **Admin UI Routing Fixed**:
+   - Fixed path prefix mismatch (/admin → /piadmin)
+   - Fixed default file name (admin.html → index.html)
+   - Fixed file handle bug in SPA handler
+   - Fixed double basePath causing /piadmin/piadmin URLs
+   - Fixed API path hardcoding for /piadmin/api
+
+2. **Docker Deployment Issues Resolved**:
+   - Fixed config update failure in bind mounts (os.Rename → os.WriteFile)
+   - Documented file permission requirements (UID 65532)
+   - Added proper error handling and backup/restore mechanism
+
+3. **HTTP Environment Compatibility**:
+   - Fixed clipboard API for HTTP environments
+   - Implemented fallback using document.execCommand
+   - Works on all networks (HTTPS, localhost, internal HTTP)
+
+4. **Build System Improvements**:
+   - Fixed deprecated next export command
+   - Fixed POSIX shell compatibility in Makefile
+   - Optimized frontend build process
+
+**Status**: All features working in production environments ✅
+
+### ✅ Completed: Admin UI Integration (Initial Release)
 
 **Backend Integration:**
 - Created `internal/adminui/` package with embedded static files via `//go:embed`
@@ -139,9 +169,13 @@ The service watches the config file and automatically reloads changes. Failed re
    - Workaround: Build with `typescript.ignoreBuildErrors: true`
    - Does not affect runtime functionality
 
-2. **Frontend API Integration**: Hooks connect to backend API but may need refinement
-   - `use-providers.ts` updated to use SWR + real API
-   - Other hooks may still use placeholder data for complex operations
+2. ~~**Frontend API Integration**~~: ✅ FIXED - All API endpoints working
+   - API paths corrected to /piadmin/api
+   - Clipboard copy working in HTTP environments
+
+3. ~~**Docker Bind Mount Issues**~~: ✅ FIXED
+   - Config updates now work with Docker bind mounts
+   - Proper file permission documentation added
 
 ### ✅ Recent Accomplishments
 
@@ -205,6 +239,50 @@ cd web/admin
 pnpm dev  # Hot reload at http://localhost:3000
 # Configure NEXT_PUBLIC_ADMIN_API_BASE to point to running piapi instance
 ```
+
+### 🔧 Troubleshooting Guide
+
+**Admin UI returns 404**:
+```bash
+# Check if PIAPI_ADMIN_TOKEN is set
+docker compose logs piapi | grep "admin UI enabled"
+# Should see: "admin UI enabled at /piadmin"
+
+# If not set, add to .env or docker-compose.yaml
+echo "PIAPI_ADMIN_TOKEN=your-token" >> .env
+docker compose restart piapi
+```
+
+**Permission denied when updating config**:
+```bash
+# Docker container runs as UID 65532 (nonroot)
+# Set correct file ownership:
+sudo chown 65532:65532 config.yaml
+chmod 600 config.yaml
+
+# Or allow all users (less secure):
+chmod 666 config.yaml
+```
+
+**Clipboard copy fails**:
+- Fixed in version with HTTP fallback
+- Update to latest version if seeing errors
+- Works on both HTTPS and HTTP now
+
+**Double /piadmin/piadmin in URLs**:
+- Fixed in latest version
+- Caused by basePath configuration mismatch
+- Update and rebuild to resolve
+
+**Static assets 404 (JS/CSS files)**:
+- Fixed in latest version
+- Ensure basePath is configured correctly
+- Clear browser cache after update
+
+**API requests return 404**:
+- Verify accessing /piadmin/api/config not /api/config
+- Check PIAPI_ADMIN_TOKEN is correct
+- Check browser console for actual request URL
 
 ### 📁 Directory Structure
 

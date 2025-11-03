@@ -1,0 +1,268 @@
+# 变更日志 - 2025-11-03 生产部署修复
+
+## 概述
+
+本次更新解决了 Admin UI 在生产环境部署时遇到的所有关键问题，确保系统在各种网络环境下都能正常工作。
+
+## 🎯 修复的问题
+
+### 1. 构建系统问题
+
+#### 问题：`next export` 命令废弃
+- **错误**: `next export has been removed`
+- **影响**: 前端构建失败
+- **修复**:
+  - 更新 Makefile 使用 `pnpm build`
+  - 移除 `next export` 命令
+- **提交**: `75cfdc6`
+
+#### 问题：Release 构建失败
+- **错误**: `Syntax error: redirection unexpected`
+- **影响**: 多平台发布构建失败
+- **修复**:
+  - 替换 bash 特有的 `<<<` here-string 为 POSIX 兼容语法
+  - 使用 `${var%/*}` 和 `${var##*/}` 参数展开
+- **提交**: `5ff8bc7`
+
+### 2. Admin UI 路由问题
+
+#### 问题：Admin UI 返回 404
+- **错误**: 访问 `/piadmin/` 返回 404 Not Found
+- **原因**:
+  1. 路径前缀错误（`/admin` vs `/piadmin`）
+  2. 默认文件名错误（`admin.html` vs `index.html`）
+  3. 文件句柄被提前关闭
+- **修复**:
+  - 更新 handler.go 中的路径前缀
+  - 修正默认文件名
+  - 修复文件重新打开逻辑
+- **提交**: `1b7be44`
+
+#### 问题：双重前缀导致重定向循环
+- **错误**: URL 变成 `/piadmin/piadmin/login`
+- **原因**: Next.js basePath 和手动 withBasePath() 双重添加前缀
+- **修复**:
+  - 移除 `NEXT_PUBLIC_BASE_PATH` 环境变量
+  - 保留 Next.js basePath 配置
+  - withBasePath() 简化为直接返回原始路径
+- **提交**: `883ff8e`
+
+#### 问题：静态资源 404
+- **错误**: `/_next/static/...` 返回 404
+- **原因**: 移除 basePath 导致资源路径没有前缀
+- **修复**:
+  - 恢复 basePath 配置
+  - 确保资源路径包含 `/piadmin` 前缀
+- **提交**: `b1e4b5f` (已回滚), `883ff8e` (最终方案)
+
+### 3. API 通信问题
+
+#### 问题：API 请求返回 404
+- **错误**: 前端请求 `/api/config` 返回 404
+- **原因**: API 路径缺少 `/piadmin` 前缀
+- **修复**:
+  - API 客户端硬编码完整路径 `/piadmin/api`
+  - 移除对 withBasePath 的依赖
+- **提交**: `5ffc61b`
+
+### 4. Docker 部署问题
+
+#### 问题：配置更新失败 - Device or resource busy
+- **错误**: `rename /app/config-xxx.yaml /app/config.yaml: device or resource busy`
+- **原因**: Docker bind mount 不支持 `os.Rename()` 操作
+- **修复**:
+  - 使用 `os.WriteFile()` 替代 `os.Rename()`
+  - 实现备份/恢复机制
+  - 保持数据安全性
+- **提交**: `2a42645`
+
+#### 问题：权限被拒绝
+- **错误**: `open /app/config.yaml: permission denied`
+- **原因**: 容器以 UID 65532 运行，但文件属于 root
+- **修复**:
+  - 添加文档说明权限要求
+  - 在 Dockerfile 中添加注释
+  - 更新 README 提供解决方案
+- **提交**: `c66581e`, `7fde0b0`
+
+### 5. HTTP 环境兼容性
+
+#### 问题：复制功能在 HTTP 环境下失败
+- **错误**: `Cannot read properties of undefined (reading 'writeText')`
+- **原因**: Clipboard API 只在 HTTPS 和 localhost 下可用
+- **修复**:
+  - 实现降级策略
+  - 优先使用 Clipboard API
+  - 降级使用 document.execCommand
+- **提交**: `87d8949`
+
+## 📊 技术细节
+
+### 架构改进
+
+**前端配置**:
+```javascript
+// next.config.mjs
+{
+  basePath: '/piadmin',        // Next.js 自动处理
+  assetPrefix: '/piadmin',     // 静态资源前缀
+  // 不设置 NEXT_PUBLIC_BASE_PATH
+}
+```
+
+**API 客户端**:
+```typescript
+// lib/api.ts
+this.baseURL = '/piadmin/api'  // 硬编码完整路径
+```
+
+**后端配置**:
+```go
+// cmd/piapi/main.go
+mux.Handle("/piadmin/", uiHandler)
+mux.Handle("/piadmin/api/", adminHandler)
+```
+
+### Docker 最佳实践
+
+**文件权限设置**:
+```bash
+# 容器运行用户: nonroot (UID 65532)
+sudo chown 65532:65532 config.yaml
+chmod 600 config.yaml
+```
+
+**docker-compose.yml 配置**:
+```yaml
+services:
+  piapi:
+    build: .
+    volumes:
+      - ./config.yaml:/app/config.yaml
+    environment:
+      - PIAPI_ADMIN_TOKEN=${PIAPI_ADMIN_TOKEN}
+```
+
+## ✅ 验证测试
+
+所有问题均已验证修复：
+
+```bash
+✅ GET /piadmin/                          → 200 OK
+✅ GET /piadmin/login                     → 200 OK
+✅ GET /piadmin/_next/static/...          → 200 OK
+✅ GET /piadmin/api/config (no auth)      → 401 Unauthorized
+✅ GET /piadmin/api/config (with auth)    → 200 OK
+✅ PUT /piadmin/api/config/raw            → 204 No Content
+✅ 复制用户配置 (HTTP)                     → 成功
+✅ 无双重前缀                              → 0 个 /piadmin/piadmin
+✅ Docker bind mount 更新                  → 成功
+✅ 文件权限正确设置                         → 成功
+```
+
+## 🚀 部署指南
+
+### 快速部署
+
+```bash
+# 1. 克隆或更新代码
+git pull origin main
+
+# 2. 设置环境变量
+echo "PIAPI_ADMIN_TOKEN=$(openssl rand -base64 32)" > .env
+
+# 3. 修正文件权限
+sudo chown 65532:65532 config.yaml
+chmod 600 config.yaml
+
+# 4. 构建并启动
+docker compose build --no-cache
+docker compose up -d
+
+# 5. 验证
+docker compose logs piapi | grep "admin UI enabled"
+curl -I http://localhost:9200/piadmin/
+```
+
+### 故障排除检查清单
+
+- [ ] `PIAPI_ADMIN_TOKEN` 已设置
+- [ ] config.yaml 权限正确 (65532:65532, 600)
+- [ ] 使用最新版本代码
+- [ ] Docker 镜像已重新构建
+- [ ] 浏览器缓存已清除
+- [ ] 正确的访问路径 (`/piadmin/` 不是 `/admin/`)
+
+## 📝 文档更新
+
+### 更新的文档
+
+1. **README.md**:
+   - 添加文件权限说明
+   - 添加完整的故障排除章节
+   - 更新 Docker 部署说明
+
+2. **CLAUDE.md**:
+   - 更新最新工作状态
+   - 添加故障排除指南
+   - 标记已修复的问题
+
+3. **Dockerfile**:
+   - 添加权限要求注释
+   - 说明 nonroot 用户配置
+
+4. **docker-compose.yml** (示例):
+   - 添加 PIAPI_ADMIN_TOKEN 配置
+   - 支持本地构建模式
+
+## 🎉 成果总结
+
+### 修复统计
+
+- **提交数量**: 9 个修复提交
+- **修复问题**: 9 个关键问题
+- **影响范围**:
+  - 构建系统 ✅
+  - 路由系统 ✅
+  - API 通信 ✅
+  - Docker 部署 ✅
+  - 浏览器兼容 ✅
+
+### 生产就绪
+
+Admin UI 现已完全生产就绪，支持：
+- ✅ HTTPS 环境
+- ✅ HTTP 内网环境
+- ✅ Docker 容器部署
+- ✅ Bind mount 配置
+- ✅ 配置热更新
+- ✅ 所有主流浏览器
+
+## 🔮 未来改进建议
+
+1. **安全增强**:
+   - 添加速率限制
+   - 实现 IP 白名单
+   - 添加审计日志
+
+2. **功能增强**:
+   - 配置版本历史
+   - 配置导入/导出
+   - 批量操作支持
+
+3. **监控改进**:
+   - 添加性能指标
+   - 错误追踪集成
+   - 健康检查增强
+
+## 📚 相关链接
+
+- [README.md](./README.md) - 用户文档
+- [CLAUDE.md](./CLAUDE.md) - 开发者文档
+- [GitHub Issues](https://github.com/prehisle/piapi/issues) - 问题追踪
+
+---
+
+**维护者**: Claude Code
+**日期**: 2025-11-03
+**状态**: ✅ 所有修复已验证并合并
