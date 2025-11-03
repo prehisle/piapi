@@ -246,6 +246,26 @@ docker build -t piapi-gateway:latest .
 
 **Docker镜像大小**: 36MB (使用 distroless 基础镜像)
 
+### 多平台发行包
+
+```bash
+# 构建管理后台并生成多平台压缩包
+make release
+```
+
+命令会在 `dist/releases/` 下为 linux/amd64、linux/arm64、darwin/amd64、darwin/arm64 与 windows/amd64 输出对应的压缩包，内部包含已嵌入前端资源的 `piapi` 可执行文件与 `config.yaml.example`、`README.md`。将压缩包下载到目标环境解压后，即可直接运行：
+
+```bash
+# 进入解压后的目录
+./piapi --config config.yaml --listen :9200
+```
+
+Windows 平台可执行文件带 `.exe` 后缀，可通过 PowerShell 运行：
+
+```powershell
+./piapi.exe --config config.yaml --listen :9200
+```
+
 ## 系统假设
 
 * 服务运行在可信内部网络，仅依赖 API Key 认证。

@@ -6,6 +6,7 @@ bin/
 config.yaml
 tmp/
 /piapi
+dist/
 
 # Frontend build artifacts
 node_modules/
