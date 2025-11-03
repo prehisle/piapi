@@ -8,7 +8,7 @@ ADMIN_UI_DIST := internal/adminui/dist
 RELEASE_DIR := dist/releases
 RELEASE_PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64
 
-.PHONY: all build build-skip-admin test run docker-build clean admin-install admin-build admin-clean dev-backend dev-frontend release
+.PHONY: all build build-skip-admin test run docker-build clean admin-install admin-build admin-clean dev-backend dev-frontend release release-skip-admin
 
 all: build
 
@@ -55,6 +55,34 @@ dev-frontend:
 	cd $(ADMIN_UI_DIR) && pnpm dev
 
 release: admin-build
+	rm -rf $(RELEASE_DIR)
+	mkdir -p $(RELEASE_DIR)
+	@set -e; \
+	for platform in $(RELEASE_PLATFORMS); do \
+		os=$${platform%/*}; \
+		arch=$${platform##*/}; \
+		output="$(APP_NAME)-$$os-$$arch"; \
+		bin_name="$(APP_NAME)"; \
+		if [ "$$os" = "windows" ]; then \
+			bin_name="$(APP_NAME).exe"; \
+		fi; \
+		build_dir="$(RELEASE_DIR)/$$output"; \
+		mkdir -p "$$build_dir"; \
+		GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 go build -o "$$build_dir/$$bin_name" ./cmd/piapi; \
+		cp config.yaml.example "$$build_dir/"; \
+		cp README.md "$$build_dir/README.md"; \
+		( cd "$(RELEASE_DIR)" && { \
+			if [ "$$os" = "windows" ]; then \
+				zip -qr "$$output.zip" "$$output"; \
+			else \
+				tar -czf "$$output.tar.gz" "$$output"; \
+			fi; \
+		}); \
+		rm -rf "$$build_dir"; \
+	done
+
+# Build release artifacts without rebuilding admin UI (for CI)
+release-skip-admin:
 	rm -rf $(RELEASE_DIR)
 	mkdir -p $(RELEASE_DIR)
 	@set -e; \

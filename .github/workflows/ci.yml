@@ -55,6 +55,14 @@ jobs:
       - name: Build
         run: go build ./cmd/piapi
 
+      # Upload built admin UI for reuse in package job
+      - name: Upload admin UI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-ui-dist
+          path: internal/adminui/dist/
+          retention-days: 1
+
   docker:
     if: github.event_name != 'pull_request'
     needs: build
@@ -94,8 +102,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+          # Use GitHub Actions cache for faster builds
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   package:
     if: github.event_name != 'pull_request'
@@ -106,17 +115,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v3
+      # Download pre-built admin UI from build job
+      - name: Download admin UI artifacts
+        uses: actions/download-artifact@v4
         with:
-          version: 9
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'pnpm'
-          cache-dependency-path: web/admin/pnpm-lock.yaml
+          name: admin-ui-dist
+          path: internal/adminui/dist/
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -134,7 +138,7 @@ jobs:
             ${{ runner.os }}-go-
 
       - name: Build release artifacts
-        run: make release
+        run: make release-skip-admin
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
