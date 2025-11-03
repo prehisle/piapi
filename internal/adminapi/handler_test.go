@@ -107,7 +107,7 @@ func TestHandler_GetConfigStructured(t *testing.T) {
 	if got := rr.Header().Get("Content-Type"); got != jsonContentType {
 		t.Fatalf("unexpected content type: %s", got)
 	}
-	if !strings.Contains(rr.Body.String(), `"Providers":[`) {
+	if !strings.Contains(rr.Body.String(), `"providers":[`) {
 		t.Fatalf("expected providers in structured response")
 	}
 }

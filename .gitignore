@@ -15,3 +15,6 @@ web/admin/out/
 
 # Embedded admin UI (copied from web/admin/out)
 internal/adminui/dist/
+.playwright-mcp/
+config-empty.yaml
+config.yaml.backup

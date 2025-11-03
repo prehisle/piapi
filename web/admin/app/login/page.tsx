@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { apiClient } from "@/lib/api"
 
 export default function LoginPage() {
   const [password, setPassword] = useState("")
@@ -19,14 +20,22 @@ export default function LoginPage() {
     setError("")
     setIsLoading(true)
 
-    if (password === "admin123") {
+    try {
+      // Set the admin token in API client
+      apiClient.setToken(password)
+
+      // Try to fetch config to validate token
+      await apiClient.getConfig()
+
+      // If successful, mark as authenticated and redirect
       localStorage.setItem("admin_auth", "true")
       router.push("/admin")
-    } else {
-      setError("Invalid password")
+    } catch (err) {
+      setError("Invalid admin token")
+      apiClient.clearToken()
+    } finally {
+      setIsLoading(false)
     }
-
-    setIsLoading(false)
   }
 
   return (

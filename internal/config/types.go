@@ -8,40 +8,40 @@ const (
 
 // Config represents the full piapi configuration surface.
 type Config struct {
-	Providers []Provider `yaml:"providers"`
-	Users     []User     `yaml:"users"`
+	Providers []Provider `yaml:"providers" json:"providers"`
+	Users     []User     `yaml:"users" json:"users"`
 }
 
 // Provider describes an upstream vendor and its available services and keys.
 type Provider struct {
-	Name     string            `yaml:"name"`
-	APIKeys  map[string]string `yaml:"apiKeys"`
-	Services []Service         `yaml:"services"`
+	Name     string            `yaml:"name" json:"name"`
+	APIKeys  map[string]string `yaml:"apiKeys" json:"api_keys"`
+	Services []Service         `yaml:"services" json:"services"`
 }
 
 // Service captures routing metadata for a particular upstream capability.
 type Service struct {
-	Type    string      `yaml:"type"`
-	BaseURL string      `yaml:"baseUrl"`
-	Auth    *AuthConfig `yaml:"auth"`
+	Type    string      `yaml:"type" json:"type"`
+	BaseURL string      `yaml:"baseUrl" json:"base_url"`
+	Auth    *AuthConfig `yaml:"auth" json:"auth,omitempty"`
 }
 
 // AuthConfig parameterizes how to inject upstream credentials per service.
 type AuthConfig struct {
-	Mode   string `yaml:"mode"`
-	Name   string `yaml:"name"`
-	Prefix string `yaml:"prefix"`
+	Mode   string `yaml:"mode" json:"mode"`
+	Name   string `yaml:"name" json:"name"`
+	Prefix string `yaml:"prefix" json:"prefix,omitempty"`
 }
 
 // User defines the mapping between a piapi API key and an upstream route.
 type User struct {
-	Name     string                      `yaml:"name"`
-	APIKey   string                      `yaml:"apiKey"`
-	Services map[string]UserServiceRoute `yaml:"services"`
+	Name     string                      `yaml:"name" json:"name"`
+	APIKey   string                      `yaml:"apiKey" json:"api_key"`
+	Services map[string]UserServiceRoute `yaml:"services" json:"services"`
 }
 
 // UserServiceRoute defines the upstream selection for a specific service type.
 type UserServiceRoute struct {
-	ProviderName    string `yaml:"providerName"`
-	ProviderKeyName string `yaml:"providerKeyName"`
+	ProviderName    string `yaml:"providerName" json:"provider_name"`
+	ProviderKeyName string `yaml:"providerKeyName" json:"provider_key_name"`
 }

@@ -28,8 +28,8 @@ import { useState } from "react"
 
 interface ProvidersListProps {
   providers: Provider[]
-  onAdd: (provider: Provider) => void
-  onDelete: (name: string) => void
+  onAdd: (provider: Provider) => Promise<void> | void
+  onDelete: (name: string) => Promise<void> | void
 }
 
 export function ProvidersList({ providers, onAdd, onDelete }: ProvidersListProps) {
@@ -39,11 +39,93 @@ export function ProvidersList({ providers, onAdd, onDelete }: ProvidersListProps
     api_keys: [],
     services: [],
   })
+  const [errors, setErrors] = useState<string[]>([])
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleSave = () => {
-    if (!formData.name.trim()) return
-    onAdd(formData)
+  const handleAddApiKey = () => {
+    setFormData({
+      ...formData,
+      api_keys: [...formData.api_keys, { name: "", value: "" }],
+    })
+  }
+
+  const handleUpdateApiKey = (index: number, field: "name" | "value", value: string) => {
+    const newKeys = [...formData.api_keys]
+    newKeys[index][field] = value
+    setFormData({ ...formData, api_keys: newKeys })
+  }
+
+  const handleRemoveApiKey = (index: number) => {
+    setFormData({
+      ...formData,
+      api_keys: formData.api_keys.filter((_, i) => i !== index),
+    })
+  }
+
+  const handleAddService = () => {
+    setFormData({
+      ...formData,
+      services: [...formData.services, ""],
+    })
+  }
+
+  const handleUpdateService = (index: number, value: string) => {
+    const newServices = [...formData.services]
+    newServices[index] = value
+    setFormData({ ...formData, services: newServices })
+  }
+
+  const handleRemoveService = (index: number) => {
+    setFormData({
+      ...formData,
+      services: formData.services.filter((_, i) => i !== index),
+    })
+  }
+
+  const validateForm = (): boolean => {
+    const newErrors: string[] = []
+
+    if (!formData.name.trim()) {
+      newErrors.push("Provider name is required")
+    }
+
+    if (formData.api_keys.length === 0) {
+      newErrors.push("At least one API key is required")
+    }
+
+    formData.api_keys.forEach((key, index) => {
+      if (!key.name.trim()) {
+        newErrors.push(`API key #${index + 1}: name is required`)
+      }
+      if (!key.value.trim()) {
+        newErrors.push(`API key #${index + 1}: value is required`)
+      }
+    })
+
+    setErrors(newErrors)
+    return newErrors.length === 0
+  }
+
+  const handleSave = async () => {
+    if (!validateForm()) return
+
+    setIsSubmitting(true)
+    try {
+      await Promise.resolve(onAdd(formData))
+      setFormData({ name: "", api_keys: [], services: [] })
+      setErrors([])
+      setIsOpen(false)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to create provider"
+      setErrors([message])
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleCancel = () => {
     setFormData({ name: "", api_keys: [], services: [] })
+    setErrors([])
     setIsOpen(false)
   }
 
@@ -61,24 +143,121 @@ export function ProvidersList({ providers, onAdd, onDelete }: ProvidersListProps
               Add Provider
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Add Provider</DialogTitle>
-              <DialogDescription>Create a new service provider</DialogDescription>
+              <DialogDescription>Create a new service provider with API keys and services</DialogDescription>
             </DialogHeader>
-            <div className="space-y-4">
+            <div className="space-y-6">
+              {/* Provider Name */}
               <div>
                 <label className="text-sm font-medium">Provider Name</label>
                 <Input
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="e.g., Provider A"
+                  placeholder="e.g., OpenAI, Anthropic"
                   className="mt-2"
                 />
               </div>
-              <Button onClick={handleSave} className="w-full">
-                Create Provider
-              </Button>
+
+              {/* API Keys */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-sm font-medium">API Keys</label>
+                  <Button type="button" variant="outline" size="sm" onClick={handleAddApiKey}>
+                    <Plus className="w-4 h-4 mr-1" />
+                    Add Key
+                  </Button>
+                </div>
+                {formData.api_keys.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No API keys added. Click "Add Key" to add one.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {formData.api_keys.map((key, index) => (
+                      <div key={index} className="flex gap-2 items-start">
+                        <Input
+                          placeholder="Key name (e.g., main-key)"
+                          value={key.name}
+                          onChange={(e) => handleUpdateApiKey(index, "name", e.target.value)}
+                          className="flex-1"
+                        />
+                        <Input
+                          placeholder="API key value"
+                          value={key.value}
+                          onChange={(e) => handleUpdateApiKey(index, "value", e.target.value)}
+                          className="flex-1"
+                          type="password"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveApiKey(index)}
+                        >
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Services */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-sm font-medium">Services (Optional)</label>
+                  <Button type="button" variant="outline" size="sm" onClick={handleAddService}>
+                    <Plus className="w-4 h-4 mr-1" />
+                    Add Service
+                  </Button>
+                </div>
+                {formData.services.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No services configured. Add later if needed.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {formData.services.map((service, index) => (
+                      <div key={index} className="flex gap-2 items-center">
+                        <Input
+                          placeholder="Service type (e.g., codex, claude_code)"
+                          value={service}
+                          onChange={(e) => handleUpdateService(index, e.target.value)}
+                          className="flex-1"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveService(index)}
+                        >
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Errors */}
+              {errors.length > 0 && (
+                <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3">
+                  <p className="text-sm font-medium text-destructive mb-1">Please fix the following errors:</p>
+                  <ul className="text-sm text-destructive space-y-1 list-disc list-inside">
+                    {errors.map((error, index) => (
+                      <li key={index}>{error}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-2 justify-end">
+                <Button type="button" variant="outline" onClick={handleCancel} disabled={isSubmitting}>
+                  Cancel
+                </Button>
+                <Button type="button" onClick={() => { void handleSave() }} disabled={isSubmitting}>
+                  Create Provider
+                </Button>
+              </div>
             </div>
           </DialogContent>
         </Dialog>
@@ -156,7 +335,9 @@ export function ProvidersList({ providers, onAdd, onDelete }: ProvidersListProps
                     <div className="flex justify-end gap-3">
                       <AlertDialogCancel>Cancel</AlertDialogCancel>
                       <AlertDialogAction
-                        onClick={() => onDelete(provider.name)}
+                        onClick={() => {
+                          void onDelete(provider.name)
+                        }}
                         className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       >
                         Delete
