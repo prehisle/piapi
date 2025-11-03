@@ -26,11 +26,10 @@ clean:
 	rm -rf ./bin
 
 admin-install:
-	cd $(ADMIN_UI_DIR) && pnpm install --frozen-lockfile
+	cd $(ADMIN_UI_DIR) && CI=1 pnpm install --frozen-lockfile --prefer-offline --reporter=silent
 
 admin-build: admin-install
-	cd $(ADMIN_UI_DIR) && pnpm build
-	cd $(ADMIN_UI_DIR) && pnpm exec next export
+	cd $(ADMIN_UI_DIR) && NEXT_DISABLE_TURBOPACK=1 pnpm build
 	rm -rf $(ADMIN_UI_DIST)
 	cp -r $(ADMIN_UI_DIR)/out $(ADMIN_UI_DIST)
 
