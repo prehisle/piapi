@@ -91,7 +91,25 @@ curl -X POST \
 
 ### 2.1 使用 Docker Compose
 
-仓库包含 `docker-compose.yml`，默认从 `ghcr.io/prehisle/piapi:main` 拉取镜像并启动：
+仓库包含 `docker-compose.yml`，支持从远程镜像拉取或本地构建。默认使用本地构建模式。
+
+**方式一：本地构建（推荐，包含最新修改）**
+
+```bash
+# 1. 创建环境变量文件启用管理界面（可选）
+echo "PIAPI_ADMIN_TOKEN=$(openssl rand -base64 32)" > .env
+
+# 2. 构建并启动
+docker compose build
+docker compose up -d
+
+# 3. 查看生成的管理令牌
+cat .env
+```
+
+**方式二：使用远程镜像**
+
+编辑 `docker-compose.yml`，将 `build: .` 注释掉，启用 `image` 和 `pull_policy` 行：
 
 ```bash
 docker compose pull
@@ -100,7 +118,7 @@ docker compose up -d
 
 默认映射主机 `./config.yaml` 到容器 `/app/config.yaml`，启动后即监听 `9200` 端口；修改本地配置并保存可触发容器内的热加载。
 
-> 如果你希望基于本地源码构建镜像，可临时编辑 `docker-compose.yml`，取消 `image` 并恢复 `build: .` 配置，然后运行 `docker compose up --build`。
+**启用管理界面**：在 `.env` 文件中设置 `PIAPI_ADMIN_TOKEN` 后，访问 `http://localhost:9200/piadmin`。
 
 ### 2.2 从 GHCR 获取镜像
 
@@ -139,11 +157,11 @@ docker run --rm \
 PIAPI_ADMIN_TOKEN='super-secret-token' go run ./cmd/piapi --config config.yaml --listen :9200
 ```
 
-所有管理接口都位于 `/admin/api` 下，并要求通过 `Authorization: Bearer <token>` 进行认证。当前提供以下操作：
+所有管理接口都位于 `/piadmin/api` 下，并要求通过 `Authorization: Bearer <token>` 进行认证。当前提供以下操作：
 
-* `GET /admin/api/config`：返回结构化 JSON 配置快照（与 `config.yaml` 字段一致）。
-* `GET /admin/api/config/raw`：以 `application/x-yaml` 形式返回原始 `config.yaml` 内容。
-* `PUT /admin/api/config/raw`：提交完整 YAML 内容以原子方式覆盖配置文件。请求体必须通过后端校验，写入失败会自动回滚到旧配置。
+* `GET /piadmin/api/config`：返回结构化 JSON 配置快照（与 `config.yaml` 字段一致）。
+* `GET /piadmin/api/config/raw`：以 `application/x-yaml` 形式返回原始 `config.yaml` 内容。
+* `PUT /piadmin/api/config/raw`：提交完整 YAML 内容以原子方式覆盖配置文件。请求体必须通过后端校验，写入失败会自动回滚到旧配置。
 
 更新成功后，后端会立即重新加载配置，现有 watcher 和运行时状态会同步刷新。建议在 CI/CD 中通过自定义脚本调用这些接口并记录审计日志。
 
@@ -159,7 +177,7 @@ PIAPI_ADMIN_TOKEN='super-secret-token' go run ./cmd/piapi --config config.yaml -
 PIAPI_ADMIN_TOKEN='your-secret-token' ./piapi --config config.yaml --listen :9200
 ```
 
-启用后，访问 `http://localhost:9200/admin` 即可进入管理界面。
+启用后，访问 `http://localhost:9200/piadmin` 即可进入管理界面。
 
 **功能特性：**
 
@@ -178,11 +196,24 @@ PIAPI_ADMIN_TOKEN='your-secret-token' ./piapi --config config.yaml --listen :920
 **Docker部署示例：**
 
 ```bash
-# 本地构建
+# 生成管理令牌并写入.env文件
+echo "PIAPI_ADMIN_TOKEN=$(openssl rand -base64 32)" > .env
+
+# 方式1：使用Docker Compose（推荐）
+docker compose build
+docker compose up -d
+
+# 方式2：使用Makefile构建镜像
 make docker-build
 
-# 使用Docker Compose运行（需在docker-compose.yml中添加PIAPI_ADMIN_TOKEN）
-docker compose up -d
+# 方式3：直接运行镜像
+docker run -d \
+  -p 9200:9200 \
+  -v "$(pwd)/config.yaml:/app/config.yaml:ro" \
+  -e PIAPI_ADMIN_TOKEN="$(cat .env | grep PIAPI_ADMIN_TOKEN | cut -d= -f2)" \
+  piapi-gateway:latest
+
+# 访问管理界面: http://localhost:9200/piadmin
 ```
 
 **开发与构建：**

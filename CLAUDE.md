@@ -109,7 +109,7 @@ The service watches the config file and automatically reloads changes. Failed re
 - Implemented SPA handler with proper static asset routing and MIME type handling
 - Fixed embed.FS path handling (requires relative paths without leading slash)
 - Integrated into `main.go` - UI only enabled when `PIAPI_ADMIN_TOKEN` is set
-- Admin UI available at `/admin/`, Admin API at `/admin/api/`
+- Admin UI available at `/piadmin/`, Admin API at `/piadmin/api/`
 
 **Frontend Build:**
 - Next.js 16 + React 19 + Tailwind CSS 4
@@ -191,7 +191,7 @@ make build          # Build frontend + backend
 **Running with admin UI:**
 ```bash
 PIAPI_ADMIN_TOKEN=your-secret ./bin/piapi --config config.yaml
-# Access at: http://localhost:9200/admin
+# Access at: http://localhost:9200/piadmin
 ```
 
 **Quick iteration (backend only):**
