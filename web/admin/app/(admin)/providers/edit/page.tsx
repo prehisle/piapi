@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ArrowLeft, Trash2, Plus } from "lucide-react"
 import { useState, useEffect, useMemo } from "react"
 import { cn } from "@/lib/utils"
+import { withBasePath } from "@/lib/base-path"
 
 const SERVICE_OPTIONS: ProviderServiceType[] = ["claude_code", "codex"]
 
@@ -210,7 +211,7 @@ export default function EditProviderPage() {
 
       await updateProvider(providerName, payload)
       setServiceFieldErrors(payload.services.map(() => ({})))
-      router.push("/providers")
+      router.push(withBasePath("/providers"))
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to update provider"
       setErrors([message])
@@ -222,7 +223,12 @@ export default function EditProviderPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="outline" size="sm" onClick={() => router.push("/providers")} className="gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => router.push(withBasePath("/providers"))}
+          className="gap-2"
+        >
           <ArrowLeft className="w-4 h-4" />
           Back
         </Button>
@@ -389,7 +395,7 @@ export default function EditProviderPage() {
         <Button
           variant="outline"
           onClick={() => {
-            router.push("/providers")
+            router.push(withBasePath("/providers"))
           }}
         >
           Cancel

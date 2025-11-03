@@ -4,6 +4,7 @@ import { type ReactNode, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Sidebar } from "@/components/sidebar"
 import { Button } from "@/components/ui/button"
+import { withBasePath } from "@/lib/base-path"
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const router = useRouter()
@@ -15,7 +16,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     if (stored === "true") {
       setIsAuthenticated(true)
     } else {
-      router.push("/login")
+      router.push(withBasePath("/login"))
     }
     setIsReady(true)
   }, [router])
@@ -26,7 +27,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   const handleLogout = () => {
     localStorage.removeItem("admin_auth")
-    router.push("/login")
+    router.push(withBasePath("/login"))
   }
 
   return (

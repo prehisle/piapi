@@ -26,6 +26,7 @@ import {
 import { Plus, Edit, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
+import { withBasePath } from "@/lib/base-path"
 
 const SERVICE_OPTIONS: ProviderServiceType[] = ["claude_code", "codex"]
 
@@ -444,7 +445,7 @@ export function ProvidersList({ providers, onAdd, onDelete }: ProvidersListProps
               </div>
 
               <div className="flex gap-2 pt-4">
-                <Link href={`/providers/edit?name=${encodeURIComponent(provider.name)}`} className="flex-1">
+                <Link href={withBasePath(`/providers/edit?name=${encodeURIComponent(provider.name)}`)} className="flex-1">
                   <Button variant="outline" size="sm" className="w-full gap-2 bg-transparent">
                     <Edit className="w-4 h-4" />
                     Edit

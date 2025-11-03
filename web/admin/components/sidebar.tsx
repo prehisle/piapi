@@ -3,8 +3,9 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Users, UserCheck } from "lucide-react"
+import { getBasePath, stripBasePath, withBasePath } from "@/lib/base-path"
 
-const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? ""
+const basePath = getBasePath()
 
 export function Sidebar() {
   const pathname = usePathname()
@@ -14,15 +15,7 @@ export function Sidebar() {
     { href: "/users", label: "Users", icon: UserCheck },
   ]
 
-  const normalizePath = (path: string) => {
-    if (basePath && path.startsWith(basePath)) {
-      const sliced = path.slice(basePath.length)
-      return sliced.startsWith("/") ? sliced : `/${sliced}`
-    }
-    return path
-  }
-
-  const currentPath = normalizePath(pathname)
+  const currentPath = stripBasePath(pathname)
 
   return (
     <aside className="w-64 border-r border-border bg-sidebar flex flex-col">
@@ -41,7 +34,7 @@ export function Sidebar() {
           return (
             <Link
               key={link.href}
-              href={link.href}
+              href={withBasePath(link.href)}
               className={`flex items-center gap-3 px-4 py-3 rounded-sm text-sm font-medium transition-colors ${
                 isActive
                   ? "bg-sidebar-accent text-sidebar-accent-foreground"

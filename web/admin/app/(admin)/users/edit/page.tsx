@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react"
 import { useRoutingStrategies } from "@/hooks/use-routing-strategies"
 import { useProviders } from "@/hooks/use-providers"
 import { RoutingTable } from "@/components/routing/routing-table"
+import { withBasePath } from "@/lib/base-path"
 
 export default function EditUserPage() {
   const router = useRouter()
@@ -18,7 +19,12 @@ export default function EditUserPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="outline" size="sm" onClick={() => router.push("/users")} className="gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => router.push(withBasePath("/users"))}
+          className="gap-2"
+        >
           <ArrowLeft className="w-4 h-4" />
           Back
         </Button>

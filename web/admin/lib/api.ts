@@ -1,3 +1,5 @@
+import { withBasePath } from './base-path'
+
 /**
  * API client for piapi admin backend
  */
@@ -46,8 +48,7 @@ class ApiClient {
 
   constructor() {
     // Base URL for admin API
-    const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? ''
-    this.baseURL = `${basePath}/api`
+    this.baseURL = withBasePath('/api')
 
     // Load token from localStorage if available
     if (typeof window !== 'undefined') {

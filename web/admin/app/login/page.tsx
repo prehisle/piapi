@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { apiClient } from "@/lib/api"
+import { withBasePath } from "@/lib/base-path"
 
 export default function LoginPage() {
   const [password, setPassword] = useState("")
@@ -29,7 +30,7 @@ export default function LoginPage() {
 
       // If successful, mark as authenticated and redirect
       localStorage.setItem("admin_auth", "true")
-      router.push("/providers")
+      router.push(withBasePath("/providers"))
     } catch (err) {
       setError("Invalid admin token")
       apiClient.clearToken()

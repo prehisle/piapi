@@ -5,7 +5,7 @@ const adminBasePath = '/piadmin'
 
 const nextConfig = {
   output: isProd ? 'export' : undefined,
-  basePath: adminBasePath,
+  basePath: isProd ? adminBasePath : undefined,
   assetPrefix: isProd ? adminBasePath : undefined,
   env: {
     NEXT_PUBLIC_BASE_PATH: adminBasePath,
@@ -25,12 +25,35 @@ const nextConfig = {
     }
 
     const backend = process.env.PIAPI_DEV_PROXY ?? 'http://localhost:9200'
-    return [
+    const beforeFiles = [
+      {
+        source: '/piapi/:path*',
+        destination: `${backend}/piapi/:path*`,
+      },
+      {
+        source: `${adminBasePath}/piapi/:path*`,
+        destination: `${backend}/piapi/:path*`,
+      },
       {
         source: '/api/:path*',
         destination: `${backend}/piadmin/api/:path*`,
       },
+      {
+        source: `${adminBasePath}/api/:path*`,
+        destination: `${backend}/piadmin/api/:path*`,
+      },
     ]
+    const afterFiles = [
+      {
+        source: `${adminBasePath}`,
+        destination: '/',
+      },
+      {
+        source: `${adminBasePath}/:path*`,
+        destination: '/:path*',
+      },
+    ]
+    return { beforeFiles, afterFiles }
   },
 }
 
