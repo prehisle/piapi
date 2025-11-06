@@ -12,6 +12,13 @@ internal/logging# zap 日志封装
 internal/metrics# Prometheus 指标注册
 ```
 
+## 项目文档
+
+- `docs/README.md`：文档索引，概览各专题说明。
+- `docs/contributing.md`：贡献者指南，整合开发命令、编码规范与协作约定。
+- `docs/changelog/`：按日期归档的变更记录（如 `docs/changelog/2025-11-03.md`）。
+- `docs/archive/`：历史专题与阶段性方案（API Key 编辑、CI 优化、会议纪要等）。
+
 ## 快速开始
 
 ### 1. 准备配置文件
@@ -493,7 +500,7 @@ Windows 平台可执行文件带 `.exe` 后缀，可通过 PowerShell 运行：
 - [ ] CI 工作流状态为绿色。
 - [x] README 徽章与镜像路径已指向当前仓库。
 - [x] README 中的 GHCR 镜像路径已替换为实际仓库并验证可用。
-- [x] 若有配置变更，更新 `docs/最终规格说明与实施规划.md` 并与 README 保持一致。
+- [x] 若有配置变更，更新 `docs/01项目总览与实施指南.md` 并与 README 保持一致。
 - [ ] 镜像构建验证通过：`docker build -t piapi-gateway:latest .`。
 - [ ] （可选）在 Release 说明中记录主要变更与兼容性提醒。
 
