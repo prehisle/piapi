@@ -100,9 +100,49 @@ The service watches the config file and automatically reloads changes. Failed re
 - Admin API disabled by default (requires PIAPI_ADMIN_TOKEN)
 - Configuration validation on load and reload
 
-## Recent Work & Current Status (2025-11-03)
+## Recent Work & Current Status
 
-### ✅ Latest: Editable API Keys with Batch Updates (2025-11-03 Session 4 - Updated)
+### ✅ Latest: Dashboard with Real-time Monitoring (2025-11-06)
+
+**Feature Overview:**
+
+Added a comprehensive Dashboard page for real-time monitoring of API gateway activity:
+
+- **Real-time Request Logging**:
+  - In-memory circular buffer storing recent requests (default 1000, configurable via `PIAPI_LOG_CAPACITY`)
+  - Records timestamp, user, service type, provider, path, status code, latency
+  - Auto-refresh every 5 seconds
+  - No persistence - data cleared on service restart
+
+- **Statistical Overview**:
+  - Four key metrics: Total requests, Success rate, Error count, Average latency
+  - Dimension filtering: By provider, user, or service type
+  - Real-time calculation from in-memory logs
+  - Displays aggregated stats for selected dimensions
+
+- **Backend Implementation**:
+  - `internal/logging/request_log.go` - Thread-safe circular buffer for log storage
+  - `internal/logging/logger.go` - Global request log store initialization
+  - `internal/server/gateway.go` - Request recording in gateway middleware
+  - `internal/adminapi/handler.go` - Dashboard API endpoints:
+    - `GET /piadmin/api/dashboard/logs` - Filtered log entries
+    - `GET /piadmin/api/dashboard/stats` - Statistical overview
+
+- **Frontend Implementation**:
+  - Dashboard page at `/piadmin/dashboard` with clean, compact layout
+  - Statistics dimension selector (3 dropdowns in title row)
+  - Four statistics cards with icons
+  - Logs table with filtering by provider/user/service
+  - Uses SWR for auto-refresh and caching
+  - Consistent card-based UI with filters in header rows
+
+**Architecture Decisions**:
+- No database required - uses in-memory storage suitable for current session monitoring
+- Configurable capacity via environment variable
+- Separate filtering for statistics and logs (independent controls)
+- Auto-refresh to provide real-time visibility without manual interaction
+
+### ✅ Completed: Editable API Keys with Batch Updates (2025-11-03 Session 4 - Updated)
 
 **Feature Implementation - Scheme C (Most Complete):**
 
