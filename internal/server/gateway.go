@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"piapi/internal/config"
+	"piapi/internal/logging"
 	"piapi/internal/metrics"
 )
 
@@ -43,6 +44,8 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	defer func() {
 		status := lrw.Status()
+		latency := time.Since(start)
+
 		fields := []zap.Field{
 			zap.String("request_id", requestID),
 			zap.String("method", r.Method),
@@ -53,12 +56,31 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			zap.String("upstream_key", providerKeyName),
 			zap.String("upstream_url", upstreamURL),
 			zap.Int("status", status),
-			zap.Duration("latency", time.Since(start)),
+			zap.Duration("latency", latency),
 		}
 		if errMessage != "" {
 			fields = append(fields, zap.String("error", errMessage))
 		}
-		metrics.ObserveRequest(serviceType, status, time.Since(start))
+
+		// Record to global request log store for dashboard
+		if logging.GlobalRequestLogStore != nil {
+			logging.GlobalRequestLogStore.Add(logging.RequestLogEntry{
+				Timestamp:   start,
+				RequestID:   requestID,
+				User:        userName,
+				ServiceType: serviceType,
+				Provider:    providerName,
+				ProviderKey: providerKeyName,
+				Method:      r.Method,
+				Path:        r.URL.Path,
+				UpstreamURL: upstreamURL,
+				StatusCode:  status,
+				LatencyMs:   latency.Milliseconds(),
+				Error:       errMessage,
+			})
+		}
+
+		metrics.ObserveRequest(serviceType, status, latency)
 		switch {
 		case status >= 500:
 			logger.Error("request completed", fields...)

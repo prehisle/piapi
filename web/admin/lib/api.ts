@@ -66,6 +66,42 @@ export interface Config {
   users: User[]
 }
 
+export interface RequestLogEntry {
+  timestamp: string
+  request_id: string
+  user: string
+  service_type: string
+  provider: string
+  provider_key: string
+  method: string
+  path: string
+  upstream_url: string
+  status_code: number
+  latency_ms: number
+  error?: string
+}
+
+export interface DashboardLogsResponse {
+  logs: RequestLogEntry[]
+  count: number
+}
+
+export interface DashboardStats {
+  request_stats: {
+    total_requests: number
+    success_count: number
+    error_count: number
+    success_rate: number
+    avg_latency_ms: number
+    by_service: Record<string, { total: number; success: number; error: number }>
+    by_provider: Record<string, { total: number; success: number; error: number }>
+    by_user: Record<string, { total: number; success: number; error: number }>
+  }
+  providers: string[]
+  users: string[]
+  service_types: string[]
+}
+
 class ApiClient {
   private baseURL: string
   private token: string | null = null
@@ -152,6 +188,33 @@ class ApiClient {
   async getRouteStats(apiKey: string, service: string): Promise<CandidateRuntimeStatus[]> {
     const params = new URLSearchParams({ apiKey, service })
     return this.request<CandidateRuntimeStatus[]>(`/stats/routes?${params.toString()}`)
+  }
+
+  /**
+   * Get dashboard logs with optional filters
+   */
+  async getDashboardLogs(options?: {
+    provider?: string
+    user?: string
+    service?: string
+    limit?: number
+  }): Promise<DashboardLogsResponse> {
+    const params = new URLSearchParams()
+    if (options?.provider) params.set('provider', options.provider)
+    if (options?.user) params.set('user', options.user)
+    if (options?.service) params.set('service', options.service)
+    if (options?.limit) params.set('limit', options.limit.toString())
+
+    const queryString = params.toString()
+    const endpoint = queryString ? `/dashboard/logs?${queryString}` : '/dashboard/logs'
+    return this.request<DashboardLogsResponse>(endpoint)
+  }
+
+  /**
+   * Get dashboard statistics
+   */
+  async getDashboardStats(): Promise<DashboardStats> {
+    return this.request<DashboardStats>('/dashboard/stats')
   }
 
   /**

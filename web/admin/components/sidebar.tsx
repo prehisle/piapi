@@ -2,13 +2,14 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Users, UserCheck, BarChart3 } from "lucide-react"
+import { Users, UserCheck, BarChart3, LayoutDashboard } from "lucide-react"
 import { stripBasePath, withBasePath } from "@/lib/base-path"
 
 export function Sidebar() {
   const pathname = usePathname()
 
   const links = [
+    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/providers", label: "Providers", icon: Users },
     { href: "/users", label: "Users", icon: UserCheck },
     { href: "/observability", label: "Observability", icon: BarChart3 },
