@@ -1,7 +1,7 @@
 "use client"
 
 import useSWR from "swr"
-import { apiClient, type DashboardStats } from "@/lib/api"
+import { apiClient } from "@/lib/api"
 
 export function useDashboardStats(refreshInterval = 5000) {
   const { data, error, mutate, isLoading } = useSWR(

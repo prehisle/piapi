@@ -1,7 +1,7 @@
 "use client"
 
 import useSWR from "swr"
-import { apiClient, type RequestLogEntry } from "@/lib/api"
+import { apiClient } from "@/lib/api"
 
 export interface DashboardLogsFilters {
   provider?: string

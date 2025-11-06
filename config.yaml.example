@@ -37,7 +37,7 @@ users:
         providerKeyName: main-key
       # 聚合路由示例（同一服务下多个候选，上线后优先使用此配置格式）
       # codex:
-      #   strategy: weighted_rr   # 或 round_robin
+      #   strategy: adaptive_rr   # round_robin / weighted_rr / adaptive_rr / sticky_healthy
       #   candidates:
       #     - providerName: provider-alpha
       #       providerKeyName: main-key

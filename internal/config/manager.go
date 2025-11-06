@@ -2,8 +2,10 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -18,6 +20,51 @@ import (
 type Manager struct {
 	mu   sync.RWMutex
 	data *resolvedConfig
+}
+
+const (
+	strategyRoundRobin    = "round_robin"
+	strategyWeightedRR    = "weighted_rr"
+	strategyAdaptiveRR    = "adaptive_rr"
+	strategyStickyHealthy = "sticky_healthy"
+)
+
+var (
+	adaptiveHalfLife     = time.Minute
+	adaptiveQualityFloor = 0.1
+	adaptiveTauSeconds   = adaptiveHalfLife.Seconds() / math.Ln2
+)
+
+func init() {
+	initAdaptiveParameters()
+}
+
+func initAdaptiveParameters() {
+	if v := strings.TrimSpace(os.Getenv("PIAPI_ADAPTIVE_HALFLIFE")); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			adaptiveHalfLife = d
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("PIAPI_ADAPTIVE_QUALITY_FLOOR")); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 && f < 1 {
+			adaptiveQualityFloor = f
+		}
+	}
+	adaptiveTauSeconds = adaptiveHalfLife.Seconds() / math.Ln2
+	if adaptiveTauSeconds <= 0 {
+		adaptiveTauSeconds = 1
+	}
+	if adaptiveQualityFloor <= 0 {
+		adaptiveQualityFloor = 0.1
+	}
+}
+
+func atomicLoadFloat64(addr *uint64) float64 {
+	return math.Float64frombits(atomic.LoadUint64(addr))
+}
+
+func atomicStoreFloat64(addr *uint64, val float64) {
+	atomic.StoreUint64(addr, math.Float64bits(val))
 }
 
 // resolvedConfig is an indexed representation of Config for fast lookups.
@@ -42,6 +89,8 @@ type resolvedUserService struct {
 	strategy   string
 	candidates []*resolvedCandidate
 	rrCounter  uint64
+	// adaptive weights / sticky state
+	stickyIndex int32
 }
 
 type resolvedCandidate struct {
@@ -60,6 +109,11 @@ type resolvedCandidate struct {
 	lastStatus    int64
 	lastUpdated   int64
 	lastError     atomic.Value
+	// Adaptive error rate smoothing parameters
+	adaptiveLastUpdate int64
+	adaptiveFailures   uint64 // float64 bits
+	adaptiveSamples    uint64 // float64 bits
+	adaptiveErrorRate  uint64 // float64 bits cache
 }
 
 // Route encapsulates the routing decision for a user and service type.
@@ -343,16 +397,19 @@ func parse(b []byte) (*resolvedConfig, error) {
 
 				strategy := strings.TrimSpace(route.Strategy)
 				if strategy == "" {
-					strategy = "round_robin"
+					strategy = strategyRoundRobin
 				}
 				strategy = strings.ToLower(strategy)
-				if strategy != "round_robin" && strategy != "weighted_rr" {
+				switch strategy {
+				case strategyRoundRobin, strategyWeightedRR, strategyAdaptiveRR, strategyStickyHealthy:
+				default:
 					return nil, fmt.Errorf("users[%d] service '%s': unsupported strategy '%s'", i, trimmedType, strategy)
 				}
 
 				resolvedServices[trimmedType] = &resolvedUserService{
-					strategy:   strategy,
-					candidates: candidates,
+					strategy:    strategy,
+					candidates:  candidates,
+					stickyIndex: -1,
 				}
 
 				sanitizedServices[trimmedType] = UserServiceRoute{
@@ -392,8 +449,9 @@ func parse(b []byte) (*resolvedConfig, error) {
 				}
 
 				resolvedServices[trimmedType] = &resolvedUserService{
-					strategy:   "round_robin",
-					candidates: candidates,
+					strategy:    strategyRoundRobin,
+					candidates:  candidates,
+					stickyIndex: -1,
 				}
 
 				sanitizedServices[trimmedType] = UserServiceRoute{
@@ -431,9 +489,10 @@ func selectCandidate(svc *resolvedUserService) *resolvedCandidate {
 	// Build eligible list snapshot
 	now := time.Now().UnixNano()
 	eligible := make([]*resolvedCandidate, 0, len(svc.candidates))
-	weights := make([]int, 0, len(svc.candidates))
-	totalWeight := 0
-	for _, c := range svc.candidates {
+	origIdx := make([]int, 0, len(svc.candidates))
+	weights := make([]float64, 0, len(svc.candidates))
+	totalWeight := 0.0
+	for i, c := range svc.candidates {
 		if !c.enabled {
 			continue
 		}
@@ -442,9 +501,24 @@ func selectCandidate(svc *resolvedUserService) *resolvedCandidate {
 			continue
 		}
 		eligible = append(eligible, c)
-		w := c.weight
+		origIdx = append(origIdx, i)
+		w := float64(c.weight)
 		if w <= 0 {
 			w = 1
+		}
+		if svc.strategy == strategyAdaptiveRR {
+			errRate := atomicLoadFloat64(&c.adaptiveErrorRate)
+			if errRate < 0 {
+				errRate = 0
+			}
+			if errRate > 1 {
+				errRate = 1
+			}
+			quality := 1 - errRate
+			if quality < adaptiveQualityFloor {
+				quality = adaptiveQualityFloor
+			}
+			w = w * quality
 		}
 		weights = append(weights, w)
 		totalWeight += w
@@ -452,13 +526,30 @@ func selectCandidate(svc *resolvedUserService) *resolvedCandidate {
 	if len(eligible) == 0 {
 		return nil
 	}
-	if svc.strategy == "weighted_rr" && totalWeight > 0 {
+	if svc.strategy == strategyStickyHealthy {
+		sticky := int(atomic.LoadInt32(&svc.stickyIndex))
+		if sticky >= 0 {
+			for i, idx := range origIdx {
+				if idx == sticky {
+					return eligible[i]
+				}
+			}
+		}
+		// select first eligible in original order
+		chosen := eligible[0]
+		atomic.StoreInt32(&svc.stickyIndex, int32(origIdx[0]))
+		return chosen
+	}
+	if (svc.strategy == strategyWeightedRR || svc.strategy == strategyAdaptiveRR) && totalWeight > 0 {
 		idx := atomic.AddUint64(&svc.rrCounter, 1) - 1
-		pos := int(idx % uint64(totalWeight))
-		acc := 0
+		pos := math.Mod(float64(idx), totalWeight)
+		acc := 0.0
 		for i, c := range eligible {
 			acc += weights[i]
 			if pos < acc {
+				if svc.strategy == strategyStickyHealthy {
+					atomic.StoreInt32(&svc.stickyIndex, int32(origIdx[i]))
+				}
 				return c
 			}
 		}
@@ -468,6 +559,44 @@ func selectCandidate(svc *resolvedUserService) *resolvedCandidate {
 	// Default round_robin
 	idx := atomic.AddUint64(&svc.rrCounter, 1) - 1
 	return eligible[int(idx%uint64(len(eligible)))]
+}
+
+func updateAdaptiveMetrics(c *resolvedCandidate, now time.Time, failure bool) {
+	if adaptiveTauSeconds <= 0 {
+		return
+	}
+	last := atomic.LoadInt64(&c.adaptiveLastUpdate)
+	var failures float64
+	var samples float64
+	if last > 0 {
+		elapsed := float64(now.UnixNano()-last) / 1e9
+		if elapsed < 0 {
+			elapsed = 0
+		}
+		decay := math.Exp(-elapsed / adaptiveTauSeconds)
+		failures = atomicLoadFloat64(&c.adaptiveFailures) * decay
+		samples = atomicLoadFloat64(&c.adaptiveSamples) * decay
+	} else {
+		failures = 0
+		samples = 0
+	}
+	if failure {
+		failures += 1
+	}
+	samples += 1
+	atomicStoreFloat64(&c.adaptiveFailures, failures)
+	atomicStoreFloat64(&c.adaptiveSamples, samples)
+	atomic.StoreInt64(&c.adaptiveLastUpdate, now.UnixNano())
+	errRate := 0.0
+	if samples > 0 {
+		errRate = failures / samples
+	}
+	if errRate < 0 {
+		errRate = 0
+	} else if errRate > 1 {
+		errRate = 1
+	}
+	atomicStoreFloat64(&c.adaptiveErrorRate, errRate)
 }
 
 // ReportResult updates runtime health/telemetry for a candidate.
@@ -498,6 +627,8 @@ func (m *Manager) ReportResult(apiKey, serviceType, providerName, providerKeyNam
 			if failure {
 				atomic.AddUint64(&c.totalErrors, 1)
 			}
+
+			updateAdaptiveMetrics(c, now, failure)
 
 			if err != nil {
 				c.lastError.Store(err.Error())
@@ -536,6 +667,8 @@ type CandidateRuntimeStatus struct {
 	TotalRequests   uint64     `json:"total_requests"`
 	TotalErrors     uint64     `json:"total_errors"`
 	ErrorRate       float64    `json:"error_rate"`
+	SmoothedError   float64    `json:"smoothed_error_rate,omitempty"`
+	EffectiveWeight float64    `json:"effective_weight,omitempty"`
 	LastStatus      int        `json:"last_status"`
 	LastError       string     `json:"last_error,omitempty"`
 	LastUpdated     time.Time  `json:"last_updated,omitempty"`
@@ -604,6 +737,23 @@ func (m *Manager) RuntimeStatus(apiKey, serviceType string) ([]CandidateRuntimeS
 		if total > 0 {
 			errorRate = float64(errors) / float64(total)
 		}
+		smoothed := atomicLoadFloat64(&c.adaptiveErrorRate)
+		if smoothed < 0 {
+			smoothed = 0
+		} else if smoothed > 1 {
+			smoothed = 1
+		}
+		effectiveWeight := float64(c.weight)
+		if effectiveWeight <= 0 {
+			effectiveWeight = 1
+		}
+		if svc.strategy == strategyAdaptiveRR {
+			quality := 1 - smoothed
+			if quality < adaptiveQualityFloor {
+				quality = adaptiveQualityFloor
+			}
+			effectiveWeight *= quality
+		}
 
 		status := CandidateRuntimeStatus{
 			ProviderName:    c.provider.provider.Name,
@@ -615,6 +765,8 @@ func (m *Manager) RuntimeStatus(apiKey, serviceType string) ([]CandidateRuntimeS
 			TotalRequests:   total,
 			TotalErrors:     errors,
 			ErrorRate:       errorRate,
+			SmoothedError:   smoothed,
+			EffectiveWeight: effectiveWeight,
 			LastStatus:      lastStatus,
 			LastError:       lastError,
 			LastUpdated:     lastUpdated,

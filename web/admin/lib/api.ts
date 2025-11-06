@@ -55,6 +55,8 @@ export interface CandidateRuntimeStatus {
   total_requests: number
   total_errors: number
   error_rate: number
+  smoothed_error_rate?: number
+  effective_weight?: number
   last_status: number
   last_error?: string
   last_updated?: string

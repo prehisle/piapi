@@ -28,6 +28,23 @@ export default function ObservabilityPage() {
   "http://<host>:9200/piadmin/api/stats/routes?apiKey=<user_api_key>&service=<service_type>"`}</code>
           </pre>
           <p>返回结果包含每个候选的请求数、错误数、错误率、最后一次错误信息以及当前健康状态。</p>
+          <p>
+            当路由策略使用 <code>adaptive_rr</code> 或 <code>sticky_healthy</code> 时，响应还会附带：
+          </p>
+          <ul className="list-disc list-inside space-y-1">
+            <li>
+              <code>smoothed_error_rate</code>：使用指数滑动窗口计算的错误率，用于评估上游近期质量。
+            </li>
+            <li>
+              <code>effective_weight</code>：实际参与调度的权重。对于 <code>adaptive_rr</code>，它会随质量动态变化。
+            </li>
+          </ul>
+          <p>
+            默认情况下窗口半衰期为 60s，可通过环境变量
+            <code className="bg-secondary/50 px-1 py-0.5 rounded-sm">PIAPI_ADAPTIVE_HALFLIFE</code>、
+            <code className="bg-secondary/50 px-1 py-0.5 rounded-sm">PIAPI_ADAPTIVE_QUALITY_FLOOR</code>
+            进行调节。
+          </p>
         </CardContent>
       </Card>
 

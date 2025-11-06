@@ -34,8 +34,26 @@ interface NormalizedRoute {
 }
 
 const DEFAULT_STRATEGIES = [
-  { value: "round_robin", label: "轮询 (round_robin)" },
-  { value: "weighted_rr", label: "加权轮询 (weighted_rr)" },
+  {
+    value: "round_robin",
+    label: "轮询 (round_robin)",
+    description: "所有健康候选按照顺序依次命中，适合负载均衡场景",
+  },
+  {
+    value: "weighted_rr",
+    label: "静态加权轮询 (weighted_rr)",
+    description: "按照配置权重分配流量，权重固定不随运行状况变化",
+  },
+  {
+    value: "adaptive_rr",
+    label: "质量自适应加权 (adaptive_rr)",
+    description: "在静态权重基础上根据平滑错误率自动调整流量占比，错误率越高权重越低",
+  },
+  {
+    value: "sticky_healthy",
+    label: "粘性健康优先 (sticky_healthy)",
+    description: "粘住最近成功的候选，除非失败或被禁用才切换到下一家，适合主节点稳定时的优先命中",
+  },
 ]
 
 function normalizeRoute(route: UserServiceRoute): NormalizedRoute {
@@ -267,17 +285,23 @@ export function ServiceRouteCard({ serviceType, route, userApiKey, providers, on
         <div className="space-y-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <label className="text-sm font-medium">调度策略</label>
-            <select
-              className="w-full sm:w-64 border border-border rounded-sm px-3 py-2 text-sm bg-background"
-              value={formRoute.strategy}
-              onChange={(event) => handleStrategyChange(event.target.value)}
-            >
-              {DEFAULT_STRATEGIES.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <div className="flex flex-col gap-2 w-full">
+              <select
+                className="w-full border border-border rounded-sm px-3 py-2 text-sm bg-background sm:w-64"
+                value={formRoute.strategy}
+                onChange={(event) => handleStrategyChange(event.target.value)}
+              >
+                {DEFAULT_STRATEGIES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                {DEFAULT_STRATEGIES.find((option) => option.value === formRoute.strategy)?.description ??
+                  "请选择路由策略"}
+              </p>
+            </div>
           </div>
 
           {formRoute.candidates.length === 0 ? (
@@ -289,6 +313,8 @@ export function ServiceRouteCard({ serviceType, route, userApiKey, providers, on
                   <TableHead>上游服务商</TableHead>
                   <TableHead>命名 Key</TableHead>
                   <TableHead className="text-right">权重</TableHead>
+                  <TableHead className="text-right">有效权重</TableHead>
+                  <TableHead className="text-right">平滑错误率</TableHead>
                   <TableHead className="text-center">启用</TableHead>
                   <TableHead>健康状态</TableHead>
                   <TableHead className="text-right">请求数</TableHead>
@@ -361,6 +387,10 @@ export function ServiceRouteCard({ serviceType, route, userApiKey, providers, on
                           onChange={(event) => handleWeightChange(index, event.target.value)}
                         />
                       </TableCell>
+                      <TableCell className="text-right">
+                        {typeof stat?.effective_weight === "number" ? formatNumber(stat.effective_weight) : "—"}
+                      </TableCell>
+                      <TableCell className="text-right">{formatRate(stat?.smoothed_error_rate)}</TableCell>
                       <TableCell className="text-center">
                         <Switch
                           checked={candidate.enabled}

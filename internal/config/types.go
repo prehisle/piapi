@@ -46,7 +46,11 @@ type UserServiceRoute struct {
 	ProviderKeyName string `yaml:"providerKeyName" json:"provider_key_name"`
 
 	// Aggregated routing (optional; when provided, overrides ProviderName/ProviderKeyName)
-	// Strategy supports: "round_robin" (默认) 或 "weighted_rr"。
+	// Strategy supports：
+	//   - round_robin（默认轮询）
+	//   - weighted_rr（静态加权轮询）
+	//   - adaptive_rr（基于运行时质量的自动加权）
+	//   - sticky_healthy（粘住最近健康候选，失败后切换）
 	Strategy   string                 `yaml:"strategy" json:"strategy,omitempty"`
 	Candidates []UserServiceCandidate `yaml:"candidates" json:"candidates,omitempty"`
 }

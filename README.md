@@ -59,7 +59,7 @@ users:
         providerKeyName: main-key
       # 自 0.3.0 起，可为同一服务声明多个候选，上游选择由 strategy + candidates 控制
       # codex:
-      #   strategy: weighted_rr   # round_robin / weighted_rr
+      #   strategy: adaptive_rr   # round_robin / weighted_rr / adaptive_rr / sticky_healthy
       #   candidates:
       #     - providerName: provider-alpha
       #       providerKeyName: main-key
@@ -214,8 +214,15 @@ PIAPI_ADMIN_TOKEN='your-secret-token' ./piapi --config config.yaml --listen :920
 * **Providers管理**：查看和编辑上游服务提供商配置，包括API密钥和服务端点
 * **Services管理**：配置服务类型、认证方式和路由规则
 * **Users管理**：管理用户API密钥与服务映射关系，可增删候选、调整权重/启停，并实时查看运行状态
-* **Observability**：汇总候选健康 API、Prometheus 指标入口以及日志排查提示
+* **Observability**：汇总候选健康 API、Prometheus 指标入口以及日志排查提示；若启用 `adaptive_rr`，可在页面查看平滑错误率与有效权重
 * **实时配置更新**：所有修改即时生效，无需重启服务
+
+**路由质量调节环境变量（可选）：**
+
+| 变量 | 默认值 | 说明 |
+| ---- | ------ | ---- |
+| `PIAPI_ADAPTIVE_HALFLIFE` | `1m` | `adaptive_rr` 策略的错误率半衰期，用于平滑统计 |
+| `PIAPI_ADAPTIVE_QUALITY_FLOOR` | `0.1` | 自适应权重的质量下限，避免候选被完全饿死 |
 
 **本地开发提醒：**
 
