@@ -9,7 +9,7 @@ export interface RoutingStrategy {
   api_key: string
 }
 
-export function useRoutingStrategies(userName: string) {
+export function useRoutingStrategies(_userName: string) {
   const [strategies, setStrategies] = useState<RoutingStrategy[]>([
     { id: "1", service: "llm", provider: "Provider A", api_key: "key_123" },
     { id: "2", service: "payment", provider: "Provider B", api_key: "key_789" },

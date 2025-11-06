@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -121,6 +122,228 @@ users:
 
 	if _, err := manager.Resolve("user-secret", "unknown"); err == nil || !errors.Is(err, ErrServiceNotFound) {
 		t.Fatalf("expected service not found error, got %v", err)
+	}
+}
+
+func TestResolveAggregatedRoundRobin(t *testing.T) {
+	yaml := `
+providers:
+  - name: provider-alpha
+    apiKeys:
+      primary: key-1
+      secondary: key-2
+    services:
+      - type: codex
+        baseUrl: https://alpha.example.com/v1
+users:
+  - name: agg
+    apiKey: agg-key
+    services:
+      codex:
+        strategy: round_robin
+        candidates:
+          - providerName: provider-alpha
+            providerKeyName: primary
+          - providerName: provider-alpha
+            providerKeyName: secondary
+`
+
+	path := writeTempConfig(t, yaml)
+	manager := NewManager()
+	if err := manager.LoadFromFile(path); err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	route1, err := manager.Resolve("agg-key", "codex")
+	if err != nil {
+		t.Fatalf("resolve first: %v", err)
+	}
+	if route1.UpstreamKeyName != "primary" {
+		t.Fatalf("expected primary, got %s", route1.UpstreamKeyName)
+	}
+
+	route2, err := manager.Resolve("agg-key", "codex")
+	if err != nil {
+		t.Fatalf("resolve second: %v", err)
+	}
+	if route2.UpstreamKeyName != "secondary" {
+		t.Fatalf("expected secondary, got %s", route2.UpstreamKeyName)
+	}
+
+	// Mark primary as unhealthy and ensure secondary is chosen.
+	manager.ReportResult("agg-key", "codex", route1.Provider.Name, route1.UpstreamKeyName, 503, nil)
+
+	route3, err := manager.Resolve("agg-key", "codex")
+	if err != nil {
+		t.Fatalf("resolve third: %v", err)
+	}
+	if route3.UpstreamKeyName != "secondary" {
+		t.Fatalf("expected fallback to secondary, got %s", route3.UpstreamKeyName)
+	}
+
+	// Mark secondary unhealthy as well → expect no active upstream
+	manager.ReportResult("agg-key", "codex", route3.Provider.Name, route3.UpstreamKeyName, 503, nil)
+
+	if _, err := manager.Resolve("agg-key", "codex"); err == nil || !errors.Is(err, ErrNoActiveUpstream) {
+		t.Fatalf("expected ErrNoActiveUpstream, got %v", err)
+	}
+}
+
+func TestResolveAggregatedWeighted(t *testing.T) {
+	yaml := `
+providers:
+  - name: provider-alpha
+    apiKeys:
+      main: key-1
+    services:
+      - type: codex
+        baseUrl: https://alpha.example.com/v1
+  - name: provider-beta
+    apiKeys:
+      backup: key-2
+    services:
+      - type: codex
+        baseUrl: https://beta.example.com/v1
+users:
+  - name: agg
+    apiKey: agg-key
+    services:
+      codex:
+        strategy: weighted_rr
+        candidates:
+          - providerName: provider-alpha
+            providerKeyName: main
+            weight: 3
+          - providerName: provider-beta
+            providerKeyName: backup
+            weight: 1
+`
+
+	path := writeTempConfig(t, yaml)
+	manager := NewManager()
+	if err := manager.LoadFromFile(path); err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	sequence := make([]string, 0, 8)
+	for i := 0; i < 8; i++ {
+		route, err := manager.Resolve("agg-key", "codex")
+		if err != nil {
+			t.Fatalf("resolve seq %d: %v", i, err)
+		}
+		sequence = append(sequence, route.Provider.Name)
+	}
+
+	expectedCycle := []string{"provider-alpha", "provider-alpha", "provider-alpha", "provider-beta"}
+	for i, name := range sequence {
+		if name != expectedCycle[i%len(expectedCycle)] {
+			t.Fatalf("unexpected provider at %d: got %s want %s", i, name, expectedCycle[i%len(expectedCycle)])
+		}
+	}
+}
+
+func TestRuntimeStatusReporting(t *testing.T) {
+	yaml := `
+providers:
+  - name: provider-alpha
+    apiKeys:
+      main: key-1
+    services:
+      - type: codex
+        baseUrl: https://alpha.example.com/v1
+  - name: provider-beta
+    apiKeys:
+      backup: key-2
+    services:
+      - type: codex
+        baseUrl: https://beta.example.com/v1
+users:
+  - name: agg
+    apiKey: agg-key
+    services:
+      codex:
+        strategy: weighted_rr
+        candidates:
+          - providerName: provider-alpha
+            providerKeyName: main
+            weight: 2
+            tags: ["primary"]
+          - providerName: provider-beta
+            providerKeyName: backup
+            weight: 1
+            tags: ["canary"]
+`
+
+	path := writeTempConfig(t, yaml)
+	manager := NewManager()
+	if err := manager.LoadFromFile(path); err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	manager.ReportResult("agg-key", "codex", "provider-alpha", "main", 200, nil)
+	manager.ReportResult("agg-key", "codex", "provider-alpha", "main", 503, nil)
+	manager.ReportResult("agg-key", "codex", "provider-beta", "backup", 0, errors.New("timeout"))
+
+	stats, err := manager.RuntimeStatus("agg-key", "codex")
+	if err != nil {
+		t.Fatalf("runtime status: %v", err)
+	}
+	if len(stats) != 2 {
+		t.Fatalf("expected 2 candidates, got %d", len(stats))
+	}
+
+	var alpha, beta *CandidateRuntimeStatus
+	for i := range stats {
+		switch stats[i].ProviderName {
+		case "provider-alpha":
+			alpha = &stats[i]
+		case "provider-beta":
+			beta = &stats[i]
+		}
+	}
+
+	if alpha == nil || beta == nil {
+		t.Fatalf("missing candidate stats: %v", stats)
+	}
+
+	if alpha.TotalRequests != 2 || alpha.TotalErrors != 1 {
+		t.Fatalf("unexpected alpha counters: %+v", alpha)
+	}
+	if math.Abs(alpha.ErrorRate-0.5) > 1e-9 {
+		t.Fatalf("unexpected alpha error rate: %v", alpha.ErrorRate)
+	}
+	if alpha.LastStatus != 503 {
+		t.Fatalf("unexpected alpha last status: %d", alpha.LastStatus)
+	}
+	if alpha.Healthy {
+		t.Fatalf("alpha should be marked unhealthy")
+	}
+	if len(alpha.Tags) != 1 || alpha.Tags[0] != "primary" {
+		t.Fatalf("unexpected alpha tags: %v", alpha.Tags)
+	}
+	if alpha.LastError != "upstream status 503" {
+		t.Fatalf("unexpected alpha last error: %s", alpha.LastError)
+	}
+
+	if beta.TotalRequests != 1 || beta.TotalErrors != 1 {
+		t.Fatalf("unexpected beta counters: %+v", beta)
+	}
+	if beta.LastStatus != 0 {
+		t.Fatalf("unexpected beta last status: %d", beta.LastStatus)
+	}
+	if beta.Healthy {
+		t.Fatalf("beta should be unhealthy after error")
+	}
+	if len(beta.Tags) != 1 || beta.Tags[0] != "canary" {
+		t.Fatalf("unexpected beta tags: %v", beta.Tags)
+	}
+	if beta.LastError != "timeout" {
+		t.Fatalf("unexpected beta last error: %s", beta.LastError)
+	}
+
+	// Ensure error for missing apiKey
+	if _, err := manager.RuntimeStatus("", "codex"); err == nil || !errors.Is(err, ErrAPIKeyRequired) {
+		t.Fatalf("expected ErrAPIKeyRequired, got %v", err)
 	}
 }
 

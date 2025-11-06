@@ -65,6 +65,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handlePutConfigRaw(w, r)
 	case matchPath(path, "config") && r.Method == http.MethodGet:
 		h.handleGetConfigStructured(w, r)
+	case matchPath(path, "stats/routes") && r.Method == http.MethodGet:
+		h.handleGetRouteStats(w, r)
 	default:
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 	}
@@ -110,6 +112,41 @@ func (h *Handler) handleGetConfigStructured(w http.ResponseWriter, _ *http.Reque
 		h.internalError(w, fmt.Errorf("marshal config: %w", err))
 		return
 	}
+	w.Header().Set("Content-Type", jsonContentType)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(payload)
+}
+
+func (h *Handler) handleGetRouteStats(w http.ResponseWriter, r *http.Request) {
+	if h.manager == nil {
+		h.internalError(w, errors.New("configuration not loaded"))
+		return
+	}
+
+	apiKey := strings.TrimSpace(r.URL.Query().Get("apiKey"))
+	service := strings.TrimSpace(r.URL.Query().Get("service"))
+
+	stats, err := h.manager.RuntimeStatus(apiKey, service)
+	if err != nil {
+		switch {
+		case errors.Is(err, config.ErrAPIKeyRequired), errors.Is(err, config.ErrServiceTypeRequired):
+			h.badRequest(w, err)
+		case errors.Is(err, config.ErrUserNotFound), errors.Is(err, config.ErrServiceNotFound):
+			writeError(w, http.StatusNotFound, err)
+		case errors.Is(err, config.ErrConfigNotLoaded):
+			writeError(w, http.StatusServiceUnavailable, err)
+		default:
+			h.internalError(w, err)
+		}
+		return
+	}
+
+	payload, err := json.Marshal(stats)
+	if err != nil {
+		h.internalError(w, fmt.Errorf("marshal stats: %w", err))
+		return
+	}
+
 	w.Header().Set("Content-Type", jsonContentType)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(payload)

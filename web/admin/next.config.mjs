@@ -27,6 +27,10 @@ const nextConfig = {
         destination: `${backend}/piapi/:path*`,
       },
       {
+        source: '/piadmin/api/:path*',
+        destination: `${backend}/piadmin/api/:path*`,
+      },
+      {
         source: '/api/:path*',
         destination: `${backend}/piadmin/api/:path*`,
       },

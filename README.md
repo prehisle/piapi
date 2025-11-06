@@ -57,6 +57,18 @@ users:
       claude_code:
         providerName: provider-alpha
         providerKeyName: main-key
+      # 自 0.3.0 起，可为同一服务声明多个候选，上游选择由 strategy + candidates 控制
+      # codex:
+      #   strategy: weighted_rr   # round_robin / weighted_rr
+      #   candidates:
+      #     - providerName: provider-alpha
+      #       providerKeyName: main-key
+      #       weight: 3
+      #       enabled: true
+      #     - providerName: provider-beta
+      #       providerKeyName: prod-key
+      #       weight: 1
+      #       enabled: true
   - name: Bob
     apiKey: piapi-user-bob
     services:
@@ -71,7 +83,7 @@ users:
         providerKeyName: prod-key
 ```
 
-默认情况下，`/piapi/<service_type>/<rest>` 的 `<rest>` 会被原样追加到相应 service 的 `baseUrl` 后面；若 `auth` 未显式配置，则自动使用 `Authorization: Bearer <providerKey>`。自 0.2.0 起，用户级路由改为“用户 + 服务类型”粒度，可像示例一样为同一用户的 `codex`、`claude_code` 分别指定不同的上游。
+默认情况下，`/piapi/<service_type>/<rest>` 的 `<rest>` 会被原样追加到相应 service 的 `baseUrl` 后面；若 `auth` 未显式配置，则自动使用 `Authorization: Bearer <providerKey>`。自 0.2.0 起，用户级路由改为“用户 + 服务类型”粒度，可像示例一样为同一用户的 `codex`、`claude_code` 分别指定不同的上游。自 0.3.0 起，同一服务下可声明多家 provider 的多个命名 key，并通过 `strategy` 与 `candidates` 控制选路与启停状态；未显式声明仍按旧版单路由语义解析。
 
 ### 2. 运行服务
 
@@ -161,6 +173,9 @@ docker run --rm \
   * `piapi_requests_total{service_type="codex",status_class="2xx"}`
   * `piapi_request_latency_seconds_bucket{service_type="claude_code",...}`
   * `piapi_config_reloads_total{result="success"}`
+  * `piapi_candidate_requests_total{service_type="codex",provider="provider-alpha"}`
+  * `piapi_candidate_errors_total{service_type="codex",provider="provider-alpha"}`
+  * （可选）`piapi_candidate_requests_by_key_total{...,provider_key="main-key"}` —— 当环境变量 `PIAPI_METRICS_KEY_LABELS` 为 `1/true/on` 时注册，方便排查单个上游 key 的失败率
 * **结构化日志**: 使用 zap JSON 输出，字段包含 `request_id`, `user`, `service_type`, `upstream_provider` 等。
 
 ### 5. 管理后台 API（MVP）
@@ -176,6 +191,7 @@ PIAPI_ADMIN_TOKEN='super-secret-token' go run ./cmd/piapi --config config.yaml -
 * `GET /piadmin/api/config`：返回结构化 JSON 配置快照（与 `config.yaml` 字段一致）。
 * `GET /piadmin/api/config/raw`：以 `application/x-yaml` 形式返回原始 `config.yaml` 内容。
 * `PUT /piadmin/api/config/raw`：提交完整 YAML 内容以原子方式覆盖配置文件。请求体必须通过后端校验，写入失败会自动回滚到旧配置。
+* `GET /piadmin/api/stats/routes?apiKey=<user_key>&service=<service>`：返回指定用户/服务的候选运行态统计（健康状态、请求/错误次数、错误率等）。
 
 更新成功后，后端会立即重新加载配置，现有 watcher 和运行时状态会同步刷新。建议在 CI/CD 中通过自定义脚本调用这些接口并记录审计日志。
 
@@ -197,8 +213,25 @@ PIAPI_ADMIN_TOKEN='your-secret-token' ./piapi --config config.yaml --listen :920
 
 * **Providers管理**：查看和编辑上游服务提供商配置，包括API密钥和服务端点
 * **Services管理**：配置服务类型、认证方式和路由规则
-* **Users管理**：管理用户API密钥与服务映射关系
+* **Users管理**：管理用户API密钥与服务映射关系，可增删候选、调整权重/启停，并实时查看运行状态
+* **Observability**：汇总候选健康 API、Prometheus 指标入口以及日志排查提示
 * **实时配置更新**：所有修改即时生效，无需重启服务
+
+**本地开发提醒：**
+
+```bash
+# 1. 启动后端并设置管理员令牌（需与前端登录时输入一致）
+PIAPI_ADMIN_TOKEN='dev-secret' go run ./cmd/piapi --config config.yaml --listen :9200
+
+# 2. 启动前端开发服务器（默认代理到 http://localhost:9200）
+cd web/admin
+pnpm install
+pnpm dev  # 监听 3000 端口
+
+# 3. 访问 http://localhost:3000/login 并输入 dev-secret
+```
+
+开发模式下 `next.config.mjs` 会自动将 `/piadmin/api/*` 请求代理到后端的 `/piadmin/api/*`，同时 `/piapi/*` 会转发到同一后端实例。如需自定义后端地址，可设置 `PIAPI_DEV_PROXY=http://192.168.1.10:9200` 后再执行 `pnpm dev`。若浏览器控制台提示跨源请求警告，可在 `next.config.mjs` 的 `allowedDevOrigins` 中补充当前访问地址。
 
 **安全建议：**
 

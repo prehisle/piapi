@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback } from "react"
+import { useCallback, useMemo } from "react"
 import useSWR from "swr"
 import { apiClient, type Provider as ApiProvider, type Service as ApiService } from "@/lib/api"
 
@@ -85,7 +85,7 @@ export function useProviders() {
     }
   )
 
-  const providers = data || []
+  const providers = useMemo(() => data ?? [], [data])
   const isLoading = !error && !data
   const isError = error
 

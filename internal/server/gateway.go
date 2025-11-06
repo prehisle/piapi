@@ -105,6 +105,8 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(lrw, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		case errors.Is(err, config.ErrServiceNotFound):
 			http.Error(lrw, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		case errors.Is(err, config.ErrNoActiveUpstream):
+			http.Error(lrw, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
 		case errors.Is(err, config.ErrAPIKeyRequired), errors.Is(err, config.ErrServiceTypeRequired):
 			http.Error(lrw, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		default:
@@ -219,11 +221,22 @@ func (g *Gateway) buildProxy(target *url.URL, route *config.Route, rest string, 
 	if g.Transport != nil {
 		proxy.Transport = g.Transport
 	}
+	// Report final response status back to config manager for health tracking
+	if g.Config != nil {
+		proxy.ModifyResponse = func(res *http.Response) error {
+			g.Config.ReportResult(route.User.APIKey, route.Service.Type, route.Provider.Name, route.UpstreamKeyName, res.StatusCode, nil)
+			return nil
+		}
+	}
+
 	proxy.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, err error) {
 		if errMsg != nil {
 			*errMsg = fmt.Sprintf("proxy error: %v", err)
 		}
 		logger.Warn("upstream proxy error", zap.Error(err))
+		if g.Config != nil {
+			g.Config.ReportResult(route.User.APIKey, route.Service.Type, route.Provider.Name, route.UpstreamKeyName, 0, err)
+		}
 		http.Error(rw, "upstream request failed", http.StatusBadGateway)
 	}
 	return proxy

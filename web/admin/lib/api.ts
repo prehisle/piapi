@@ -23,8 +23,18 @@ export interface Provider {
 }
 
 export interface UserServiceRoute {
+  provider_name?: string
+  provider_key_name?: string
+  strategy?: string
+  candidates?: UserServiceCandidate[]
+}
+
+export interface UserServiceCandidate {
   provider_name: string
   provider_key_name: string
+  weight?: number
+  enabled?: boolean
+  tags?: string[]
 }
 
 export interface User {
@@ -33,6 +43,22 @@ export interface User {
   services: {
     [serviceType: string]: UserServiceRoute
   }
+}
+
+export interface CandidateRuntimeStatus {
+  provider_name: string
+  provider_key_name: string
+  weight: number
+  enabled: boolean
+  healthy: boolean
+  unhealthy_until?: string
+  total_requests: number
+  total_errors: number
+  error_rate: number
+  last_status: number
+  last_error?: string
+  last_updated?: string
+  tags?: string[]
 }
 
 export interface Config {
@@ -121,6 +147,11 @@ class ApiClient {
    */
   async getConfigRaw(): Promise<string> {
     return this.request<string>('/config/raw')
+  }
+
+  async getRouteStats(apiKey: string, service: string): Promise<CandidateRuntimeStatus[]> {
+    const params = new URLSearchParams({ apiKey, service })
+    return this.request<CandidateRuntimeStatus[]>(`/stats/routes?${params.toString()}`)
   }
 
   /**
@@ -273,12 +304,38 @@ class ApiClient {
       for (const user of config.users) {
         yaml += `    - name: ${user.name}\n`
         yaml += `      apiKey: ${user.api_key}\n`
-        if (Object.keys(user.services).length > 0) {
+        const services = user.services || {}
+        if (Object.keys(services).length > 0) {
           yaml += `      services:\n`
-          for (const [serviceType, route] of Object.entries(user.services)) {
+          for (const [serviceType, route] of Object.entries(services)) {
             yaml += `        ${serviceType}:\n`
-            yaml += `            providerName: ${route.provider_name}\n`
-            yaml += `            providerKeyName: ${route.provider_key_name}\n`
+            if (route.candidates && route.candidates.length > 0) {
+              const strategy = route.strategy || 'round_robin'
+              yaml += `          strategy: ${strategy}\n`
+              yaml += `          candidates:\n`
+              for (const candidate of route.candidates) {
+                yaml += `            - providerName: ${candidate.provider_name}\n`
+                yaml += `              providerKeyName: ${candidate.provider_key_name}\n`
+                const weight = candidate.weight ?? 1
+                yaml += `              weight: ${weight}\n`
+                if (candidate.enabled !== undefined) {
+                  yaml += `              enabled: ${candidate.enabled ? 'true' : 'false'}\n`
+                }
+                if (candidate.tags && candidate.tags.length > 0) {
+                  yaml += `              tags:\n`
+                  for (const tag of candidate.tags) {
+                    yaml += `                - ${tag}\n`
+                  }
+                }
+              }
+            } else {
+              if (route.provider_name) {
+                yaml += `          providerName: ${route.provider_name}\n`
+              }
+              if (route.provider_key_name) {
+                yaml += `          providerKeyName: ${route.provider_key_name}\n`
+              }
+            }
           }
         }
       }

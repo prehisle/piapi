@@ -1,6 +1,7 @@
 package adminapi
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -35,11 +36,11 @@ users:
         providerKeyName: main-key
 `
 
-func newTestHandler(t *testing.T) (*Handler, string) {
+func newTestHandlerWithConfig(t *testing.T, yaml string) (*Handler, string, *config.Manager) {
 	t.Helper()
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(cfgPath, []byte(sampleConfig), 0o600); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(yaml), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
@@ -48,9 +49,13 @@ func newTestHandler(t *testing.T) (*Handler, string) {
 		t.Fatalf("load config: %v", err)
 	}
 
-	logger := zap.NewNop()
-	handler := NewHandler(manager, cfgPath, "secret-token", logger)
-	return handler, cfgPath
+	handler := NewHandler(manager, cfgPath, "secret-token", zap.NewNop())
+	return handler, cfgPath, manager
+}
+
+func newTestHandler(t *testing.T) (*Handler, string) {
+	handler, path, _ := newTestHandlerWithConfig(t, sampleConfig)
+	return handler, path
 }
 
 func TestHandler_Unauthorized(t *testing.T) {
@@ -386,5 +391,91 @@ func TestHandler_PutConfigRaw_TooLarge(t *testing.T) {
 
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for too large payload, got %d", rr.Code)
+	}
+}
+
+func TestHandler_GetRouteStats(t *testing.T) {
+	yaml := `
+providers:
+  - name: provider-alpha
+    apiKeys:
+      main: key-1
+      backup: key-2
+    services:
+      - type: codex
+        baseUrl: https://alpha.example.com/v1
+  - name: provider-beta
+    apiKeys:
+      canary: key-3
+    services:
+      - type: codex
+        baseUrl: https://beta.example.com/v1
+users:
+  - name: agg
+    apiKey: agg-key
+    services:
+      codex:
+        strategy: weighted_rr
+        candidates:
+          - providerName: provider-alpha
+            providerKeyName: main
+            weight: 3
+          - providerName: provider-beta
+            providerKeyName: canary
+            weight: 1
+`
+
+	handler, _, manager := newTestHandlerWithConfig(t, yaml)
+
+	manager.ReportResult("agg-key", "codex", "provider-alpha", "main", 200, nil)
+	manager.ReportResult("agg-key", "codex", "provider-alpha", "main", 503, nil)
+	manager.ReportResult("agg-key", "codex", "provider-beta", "canary", 503, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/stats/routes?apiKey=agg-key&service=codex", nil)
+	req.Header.Set("Authorization", "Bearer secret-token")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+	if got := rr.Header().Get("Content-Type"); got != jsonContentType {
+		t.Fatalf("unexpected content type: %s", got)
+	}
+
+	var payload []config.CandidateRuntimeStatus
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal stats: %v", err)
+	}
+	if len(payload) != 2 {
+		t.Fatalf("expected 2 stats entries, got %d", len(payload))
+	}
+
+	var alpha, beta *config.CandidateRuntimeStatus
+	for i := range payload {
+		switch payload[i].ProviderName {
+		case "provider-alpha":
+			alpha = &payload[i]
+		case "provider-beta":
+			beta = &payload[i]
+		}
+	}
+	if alpha == nil || beta == nil {
+		t.Fatalf("missing providers in stats: %+v", payload)
+	}
+
+	if alpha.TotalRequests != 2 || alpha.TotalErrors != 1 || alpha.Healthy {
+		t.Fatalf("unexpected alpha stats: %+v", alpha)
+	}
+	if beta.TotalRequests != 1 || beta.TotalErrors != 1 || beta.Healthy {
+		t.Fatalf("unexpected beta stats: %+v", beta)
+	}
+
+	badReq := httptest.NewRequest(http.MethodGet, "/stats/routes?apiKey=agg-key", nil)
+	badReq.Header.Set("Authorization", "Bearer secret-token")
+	badRR := httptest.NewRecorder()
+	handler.ServeHTTP(badRR, badReq)
+	if badRR.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing service, got %d", badRR.Code)
 	}
 }

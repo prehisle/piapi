@@ -35,6 +35,18 @@ users:
       claude_code:
         providerName: provider-alpha
         providerKeyName: main-key
+      # 聚合路由示例（同一服务下多个候选，上线后优先使用此配置格式）
+      # codex:
+      #   strategy: weighted_rr   # 或 round_robin
+      #   candidates:
+      #     - providerName: provider-alpha
+      #       providerKeyName: main-key
+      #       weight: 3
+      #       enabled: true
+      #     - providerName: provider-beta
+      #       providerKeyName: prod-key
+      #       weight: 1
+      #       enabled: true
   - name: Bob
     apiKey: piapi-user-bob
     services:

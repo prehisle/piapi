@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -33,6 +34,12 @@ func main() {
 		_ = baseLogger.Sync()
 	}()
 	sugar := baseLogger.Sugar()
+
+	enableKeyMetrics := parseBool(strings.TrimSpace(os.Getenv("PIAPI_METRICS_KEY_LABELS")))
+	metrics.Configure(metrics.Config{EnableCandidateKeyLabels: enableKeyMetrics})
+	if enableKeyMetrics {
+		sugar.Infow("candidate metrics include provider key labels", "env", "PIAPI_METRICS_KEY_LABELS")
+	}
 
 	manager := config.NewManager()
 	if err := ensureDevConfig(*configPath); err != nil {
@@ -143,4 +150,16 @@ func ensureDevConfig(path string) error {
 	}
 
 	return nil
+}
+
+func parseBool(value string) bool {
+	if value == "" {
+		return false
+	}
+	switch strings.ToLower(value) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }

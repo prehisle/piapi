@@ -1,12 +1,22 @@
 "use client"
 
-import { useCallback } from "react"
+import { useCallback, useMemo } from "react"
 import useSWR from "swr"
-import { apiClient, type User as ApiUser } from "@/lib/api"
+import { apiClient, type User as ApiUser, type UserServiceRoute as ApiUserServiceRoute, type UserServiceCandidate as ApiUserServiceCandidate } from "@/lib/api"
 
-export interface UserServiceRoute {
+export interface UserServiceCandidate {
   provider_name: string
   provider_key_name: string
+  weight?: number
+  enabled?: boolean
+  tags?: string[]
+}
+
+export interface UserServiceRoute {
+  provider_name?: string
+  provider_key_name?: string
+  strategy?: string
+  candidates?: UserServiceCandidate[]
 }
 
 export interface User {
@@ -17,19 +27,71 @@ export interface User {
   }
 }
 
+function transformCandidate(candidate: ApiUserServiceCandidate): UserServiceCandidate {
+  return {
+    provider_name: candidate.provider_name,
+    provider_key_name: candidate.provider_key_name,
+    weight: candidate.weight ?? 1,
+    enabled: candidate.enabled ?? true,
+    tags: candidate.tags ?? [],
+  }
+}
+
+function transformRoute(route: ApiUserServiceRoute): UserServiceRoute {
+  if (!route) {
+    return {}
+  }
+  const candidates = route.candidates?.map(transformCandidate)
+  return {
+    provider_name: route.provider_name,
+    provider_key_name: route.provider_key_name,
+    strategy: route.strategy,
+    candidates,
+  }
+}
+
 function transformUser(apiUser: ApiUser): User {
+  const services: Record<string, UserServiceRoute> = {}
+  const sourceServices = apiUser.services ?? {}
+  for (const [service, route] of Object.entries(sourceServices)) {
+    services[service] = transformRoute(route)
+  }
   return {
     name: apiUser.name,
     api_key: apiUser.api_key,
-    services: apiUser.services ?? {},
+    services,
+  }
+}
+
+function prepareCandidate(candidate: UserServiceCandidate): ApiUserServiceCandidate {
+  return {
+    provider_name: candidate.provider_name,
+    provider_key_name: candidate.provider_key_name,
+    weight: candidate.weight,
+    enabled: candidate.enabled,
+    tags: candidate.tags,
+  }
+}
+
+function untransformRoute(route: UserServiceRoute): ApiUserServiceRoute {
+  const candidates = route.candidates?.map(prepareCandidate)
+  return {
+    provider_name: route.provider_name,
+    provider_key_name: route.provider_key_name,
+    strategy: route.strategy,
+    candidates,
   }
 }
 
 function untransformUser(user: User): ApiUser {
+  const services: Record<string, ApiUserServiceRoute> = {}
+  for (const [service, route] of Object.entries(user.services ?? {})) {
+    services[service] = untransformRoute(route)
+  }
   return {
     name: user.name,
     api_key: user.api_key,
-    services: user.services ?? {},
+    services,
   }
 }
 
@@ -47,7 +109,7 @@ export function useUsers() {
     }
   )
 
-  const users = data || []
+  const users = useMemo(() => data ?? [], [data])
   const isLoading = !error && !data
   const isError = error
 

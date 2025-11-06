@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Trash2, Plus } from "lucide-react"
 import { useState, useEffect, useMemo } from "react"
-import { cn, maskApiKey } from "@/lib/utils"
+import { cn } from "@/lib/utils"
 import { withBasePath } from "@/lib/base-path"
 
 const SERVICE_OPTIONS: ProviderServiceType[] = ["claude_code", "codex"]

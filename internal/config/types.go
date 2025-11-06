@@ -44,4 +44,18 @@ type User struct {
 type UserServiceRoute struct {
 	ProviderName    string `yaml:"providerName" json:"provider_name"`
 	ProviderKeyName string `yaml:"providerKeyName" json:"provider_key_name"`
+
+	// Aggregated routing (optional; when provided, overrides ProviderName/ProviderKeyName)
+	// Strategy supports: "round_robin" (默认) 或 "weighted_rr"。
+	Strategy   string                 `yaml:"strategy" json:"strategy,omitempty"`
+	Candidates []UserServiceCandidate `yaml:"candidates" json:"candidates,omitempty"`
+}
+
+// UserServiceCandidate describes one upstream candidate in an aggregated route.
+type UserServiceCandidate struct {
+	ProviderName    string   `yaml:"providerName" json:"provider_name"`
+	ProviderKeyName string   `yaml:"providerKeyName" json:"provider_key_name"`
+	Weight          int      `yaml:"weight" json:"weight,omitempty"`
+	Enabled         *bool    `yaml:"enabled" json:"enabled,omitempty"`
+	Tags            []string `yaml:"tags" json:"tags,omitempty"`
 }

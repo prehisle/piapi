@@ -201,6 +201,46 @@ users:
 	}
 }
 
+func TestGatewayNoActiveUpstreamReturnsServiceUnavailable(t *testing.T) {
+	yaml := `
+providers:
+  - name: upstream
+    apiKeys:
+      main: secret
+    services:
+      - type: codex
+        baseUrl: https://example.com
+users:
+  - name: tester
+    apiKey: user-key
+    services:
+      codex:
+        providerName: upstream
+        providerKeyName: main
+`
+
+	path := writeTempConfig(t, yaml)
+
+	manager := config.NewManager()
+	if err := manager.LoadFromFile(path); err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	manager.ReportResult("user-key", "codex", "upstream", "main", 503, nil)
+
+	gateway := &Gateway{Config: manager}
+
+	req := httptest.NewRequest(http.MethodGet, "/piapi/codex/foo", nil)
+	req.Header.Set("Authorization", "Bearer user-key")
+	rr := httptest.NewRecorder()
+
+	gateway.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when no active upstream, got %d", rr.Code)
+	}
+}
+
 func writeTempConfig(t *testing.T, contents string) string {
 	t.Helper()
 	dir := t.TempDir()

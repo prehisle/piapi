@@ -1,10 +1,11 @@
 "use client"
 
 import { Fragment, useMemo, useState } from "react"
-import type { User } from "@/hooks/use-users"
+import type { User, UserServiceRoute } from "@/hooks/use-users"
 import type { Provider } from "@/hooks/use-providers"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import {
   Dialog,
   DialogContent,
@@ -24,6 +25,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Plus, Eye, EyeOff, Copy, Trash2 } from "lucide-react"
+import { ServiceRouteCard } from "@/components/routing/service-route-card"
 
 interface UsersTableProps {
   users: User[]
@@ -33,13 +35,28 @@ interface UsersTableProps {
   onDelete: (name: string) => Promise<void> | void
 }
 
-interface RouteFormEntry {
-  service: string
+interface CandidateFormEntry {
   provider: string
   key: string
+  weight: number
+  enabled: boolean
+  originalTags?: string[]
 }
 
-const createEmptyRoute = (): RouteFormEntry => ({ service: "", provider: "", key: "" })
+interface RouteFormEntry {
+  service: string
+  strategy: string
+  candidates: CandidateFormEntry[]
+}
+
+const createEmptyCandidate = (): CandidateFormEntry => ({ provider: "", key: "", weight: 1, enabled: true, originalTags: [] })
+
+const createEmptyRoute = (): RouteFormEntry => ({ service: "", strategy: "round_robin", candidates: [createEmptyCandidate()] })
+
+const STRATEGY_OPTIONS = [
+  { value: "round_robin", label: "轮询 (round_robin)" },
+  { value: "weighted_rr", label: "加权轮询 (weighted_rr)" },
+]
 
 const generateApiKey = () => {
   if (typeof window !== "undefined" && window.crypto?.getRandomValues) {
@@ -57,21 +74,27 @@ const routesToServicesMap = (routes: RouteFormEntry[]): User["services"] => {
     if (!route.service) {
       return
     }
+
+    const candidates = route.candidates
+      .filter((candidate) => candidate.provider && candidate.key)
+      .map((candidate) => ({
+        provider_name: candidate.provider,
+        provider_key_name: candidate.key,
+        weight: candidate.weight > 0 ? candidate.weight : 1,
+        enabled: candidate.enabled,
+        tags: candidate.originalTags ?? [],
+      }))
+
+    if (candidates.length === 0) {
+      return
+    }
+
     map[route.service] = {
-      provider_name: route.provider,
-      provider_key_name: route.key,
+      strategy: route.strategy || "round_robin",
+      candidates,
     }
   })
   return map
-}
-
-const normalizeRoutesFromUser = (user: User): RouteFormEntry[] => {
-  const entries = Object.entries(user.services || {}).map(([serviceType, route]) => ({
-    service: serviceType,
-    provider: route.provider_name,
-    key: route.provider_key_name,
-  }))
-  return entries.length > 0 ? entries : [createEmptyRoute()]
 }
 
 export function UsersTable({ users, providers, onAdd, onUpdate, onDelete }: UsersTableProps) {
@@ -81,9 +104,6 @@ export function UsersTable({ users, providers, onAdd, onUpdate, onDelete }: User
   const [errors, setErrors] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [routes, setRoutes] = useState<RouteFormEntry[]>([createEmptyRoute()])
-  const [routesDrafts, setRoutesDrafts] = useState<Record<string, RouteFormEntry[]>>({})
-  const [routeErrors, setRouteErrors] = useState<Record<string, string[]>>({})
-  const [savingUsers, setSavingUsers] = useState<Record<string, boolean>>({})
 
   const serviceOptions = useMemo(() => {
     const types = new Set<string>()
@@ -100,6 +120,28 @@ export function UsersTable({ users, providers, onAdd, onUpdate, onDelete }: User
     })
     return map
   }, [providers])
+
+  const providersForService = (service: string) =>
+    service ? providers.filter((provider) => provider.services.some((svc) => svc.type === service)) : providers
+
+const createDefaultCandidateForService = (service: string): CandidateFormEntry => {
+  if (!service) {
+    return createEmptyCandidate()
+  }
+  const candidates = providersForService(service)
+  const defaultProvider = candidates[0]
+  const defaultKey = defaultProvider?.api_keys[0]?.name ?? ""
+  return {
+    provider: defaultProvider?.name ?? "",
+    key: defaultKey,
+    weight: 1,
+    enabled: true,
+    originalTags: [],
+  }
+}
+
+const findProvider = (providers: Provider[], name: string | undefined) =>
+  providers.find((provider) => provider.name === name)
 
   const validateRoutes = (routesList: RouteFormEntry[]): string[] => {
     const routeErrors: string[] = []
@@ -122,25 +164,40 @@ export function UsersTable({ users, providers, onAdd, onUpdate, onDelete }: User
         uniqueServices.add(route.service)
       }
 
-      if (!route.provider) {
-        routeErrors.push(`${label}: provider is required`)
-      } else {
-        const provider = providerMap.get(route.provider)
-        if (!provider) {
-          routeErrors.push(`${label}: selected provider not found`)
-        } else if (route.service && !provider.services.some((svc) => svc.type === route.service)) {
-          routeErrors.push(`${label}: provider does not offer service '${route.service}'`)
-        }
+      if (!route.strategy) {
+        routeErrors.push(`${label}: strategy is required`)
       }
 
-      if (!route.key) {
-        routeErrors.push(`${label}: API key is required`)
-      } else {
-        const provider = providerMap.get(route.provider)
-        if (provider && !provider.api_keys.some((key) => key.name === route.key)) {
-          routeErrors.push(`${label}: API key '${route.key}' not found on provider`)
-        }
+      if (route.candidates.length === 0) {
+        routeErrors.push(`${label}: at least one candidate is required`)
       }
+
+      route.candidates.forEach((candidate, candidateIndex) => {
+        const candidateLabel = `${label} -> Candidate #${candidateIndex + 1}`
+        if (!candidate.provider) {
+          routeErrors.push(`${candidateLabel}: provider is required`)
+        }
+        if (!candidate.key) {
+          routeErrors.push(`${candidateLabel}: provider key is required`)
+        }
+
+        if (candidate.provider) {
+          const provider = providerMap.get(candidate.provider)
+          if (!provider) {
+            routeErrors.push(`${candidateLabel}: provider '${candidate.provider}' not found`)
+          } else {
+            if (route.service && !provider.services.some((svc) => svc.type === route.service)) {
+              routeErrors.push(`${candidateLabel}: provider does not offer service '${route.service}'`)
+            }
+            if (candidate.key && !provider.api_keys.some((key) => key.name === candidate.key)) {
+              routeErrors.push(`${candidateLabel}: key '${candidate.key}' not found on provider '${candidate.provider}'`)
+            }
+          }
+        }
+        if (candidate.weight <= 0) {
+          routeErrors.push(`${candidateLabel}: weight must be greater than 0`)
+        }
+      })
     })
 
     return routeErrors
@@ -216,12 +273,18 @@ export function UsersTable({ users, providers, onAdd, onUpdate, onDelete }: User
 
   const renderRoutesForm = (
     routesState: RouteFormEntry[],
-    updateFn: (index: number, field: keyof RouteFormEntry, value: string) => void,
-    removeFn: (index: number) => void,
+    handlers: {
+      changeService: (index: number, value: string) => void
+      changeStrategy: (index: number, value: string) => void
+      updateCandidate: (index: number, candidateIndex: number, updater: (candidate: CandidateFormEntry) => CandidateFormEntry) => void
+      addCandidate: (index: number) => void
+      removeCandidate: (index: number, candidateIndex: number) => void
+      removeRoute: (index: number) => void
+    },
     addFn: () => void,
     disableAdd: boolean
   ) => (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
         <label className="text-sm font-medium">Service Routes</label>
         <Button type="button" variant="outline" size="sm" onClick={addFn} disabled={disableAdd}>
@@ -232,97 +295,164 @@ export function UsersTable({ users, providers, onAdd, onUpdate, onDelete }: User
       {serviceOptions.length === 0 ? (
         <p className="text-sm text-muted-foreground">Configure provider services to enable user routing.</p>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {routesState.map((route, index) => {
-          const providersForService = route.service
-            ? providers.filter((providerOption) => providerOption.services.some((svc) => svc.type === route.service))
-            : providers
-            const provider = route.provider ? providerMap.get(route.provider) : undefined
-            const providerKeys = provider?.api_keys ?? []
-            const providerExists = route.provider
-              ? providersForService.some((candidate) => candidate.name === route.provider)
-              : true
-            const keyExists = route.key ? providerKeys.some((key) => key.name === route.key) : true
+            const providersForService = route.service
+              ? providers.filter((providerOption) => providerOption.services.some((svc) => svc.type === route.service))
+              : providers
+
             return (
-              <div
-                key={`${route.service || "_"}-${index}`}
-                className="border border-border/60 rounded-sm p-3 flex flex-col gap-3 md:flex-row md:items-end md:gap-3"
-              >
-                <div className="flex-1 space-y-2">
-                  <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Service</label>
-                  <select
-                    value={route.service}
-                    onChange={(e) => updateFn(index, "service", e.target.value)}
-                    className="w-full px-3 py-2 border border-border rounded-sm bg-background text-sm"
-                  >
-                    <option value="">Select service</option>
-                    {serviceOptions.map((option) => (
-                      <option
-                        key={option}
-                        value={option}
-                        disabled={routesState.some((r, i) => i !== index && r.service === option)}
+              <div key={`${route.service || "_"}-${index}`} className="border border-border/60 rounded-sm p-4 space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Service</label>
+                    <select
+                      value={route.service}
+                      onChange={(event) => handlers.changeService(index, event.target.value)}
+                      className="w-full px-3 py-2 border border-border rounded-sm bg-background text-sm"
+                    >
+                      <option value="">Select service</option>
+                      {serviceOptions.map((option) => (
+                        <option
+                          key={option}
+                          value={option}
+                          disabled={routesState.some((r, i) => i !== index && r.service === option)}
+                        >
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Strategy</label>
+                    <select
+                      value={route.strategy}
+                      onChange={(event) => handlers.changeStrategy(index, event.target.value)}
+                      className="w-full px-3 py-2 border border-border rounded-sm bg-background text-sm"
+                    >
+                      {STRATEGY_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {route.candidates.map((candidate, candidateIndex) => {
+                    const provider = findProvider(providers, candidate.provider)
+                    const providerKeys = provider?.api_keys ?? []
+                    return (
+                      <div
+                        key={`${candidate.provider}-${candidate.key}-${candidateIndex}`}
+                        className="border border-border/40 rounded-sm p-3 grid gap-4 md:grid-cols-4"
                       >
-                        {option}
-                      </option>
-                    ))}
-                  </select>
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Provider</label>
+                          <select
+                            value={candidate.provider}
+                            onChange={(event) => {
+                              const selected = findProvider(providers, event.target.value)
+                              const firstKey = selected?.api_keys[0]?.name ?? ""
+                              handlers.updateCandidate(index, candidateIndex, (prev) => ({
+                                ...prev,
+                                provider: event.target.value,
+                                key: firstKey,
+                                originalTags: [],
+                              }))
+                            }}
+                            className="w-full px-3 py-2 border border-border rounded-sm bg-background text-sm"
+                            disabled={providersForService.length === 0}
+                          >
+                            <option value="">Select provider</option>
+                            {providersForService.map((providerOption) => (
+                              <option key={providerOption.name} value={providerOption.name}>
+                                {providerOption.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Key</label>
+                          <select
+                            value={candidate.key}
+                            onChange={(event) =>
+                              handlers.updateCandidate(index, candidateIndex, (prev) => ({
+                                ...prev,
+                                key: event.target.value,
+                              }))
+                            }
+                            className="w-full px-3 py-2 border border-border rounded-sm bg-background text-sm"
+                            disabled={!candidate.provider || providerKeys.length === 0}
+                          >
+                            <option value="">{candidate.provider ? "Select key" : "Pick provider first"}</option>
+                            {providerKeys.map((keyOption) => (
+                              <option key={keyOption.name} value={keyOption.name}>
+                                {keyOption.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Weight</label>
+                          <Input
+                            type="number"
+                            min={1}
+                            value={candidate.weight}
+                            onChange={(event) =>
+                              handlers.updateCandidate(index, candidateIndex, (prev) => ({
+                                ...prev,
+                                weight: Number.parseInt(event.target.value, 10) || 1,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2 flex flex-col">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Enabled</label>
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={candidate.enabled}
+                              onCheckedChange={(value) =>
+                                handlers.updateCandidate(index, candidateIndex, (prev) => ({
+                                  ...prev,
+                                  enabled: value,
+                                }))
+                              }
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="text-destructive"
+                              onClick={() => handlers.removeCandidate(index, candidateIndex)}
+                              disabled={route.candidates.length <= 1}
+                              title="Remove candidate"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
-                <div className="flex-1 space-y-2">
-                  <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Provider
-                  </label>
-                  <select
-                    value={route.provider}
-                    onChange={(e) => updateFn(index, "provider", e.target.value)}
-                    className="w-full px-3 py-2 border border-border rounded-sm bg-background text-sm"
-                    disabled={providersForService.length === 0}
+
+                <div className="flex justify-between flex-col gap-2 sm:flex-row sm:items-center">
+                  <Button type="button" variant="outline" size="sm" onClick={() => handlers.addCandidate(index)}>
+                    <Plus className="w-4 h-4 mr-1" /> Add Candidate
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => handlers.removeRoute(index)}
+                    disabled={routesState.length <= 1}
                   >
-                    <option value="">Select provider</option>
-                    {providersForService.map((providerOption) => (
-                      <option key={providerOption.name} value={providerOption.name}>
-                        {providerOption.name}
-                      </option>
-                    ))}
-                    {route.provider && !providerExists && (
-                      <option value={route.provider} disabled>
-                        {route.provider} (missing)
-                      </option>
-                    )}
-                  </select>
+                    <Trash2 className="w-4 h-4 mr-1" /> Remove Route
+                  </Button>
                 </div>
-                <div className="flex-1 space-y-2">
-                  <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Provider Key
-                  </label>
-                  <select
-                    value={route.key}
-                    onChange={(e) => updateFn(index, "key", e.target.value)}
-                    className="w-full px-3 py-2 border border-border rounded-sm bg-background text-sm"
-                    disabled={!route.provider || providerKeys.length === 0}
-                  >
-                    <option value="">Select key</option>
-                    {providerKeys.map((key) => (
-                      <option key={key.name} value={key.name}>
-                        {key.name}
-                      </option>
-                    ))}
-                    {route.key && !keyExists && (
-                      <option value={route.key} disabled>
-                        {route.key} (missing)
-                      </option>
-                    )}
-                  </select>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => removeFn(index)}
-                  className="text-destructive hover:text-destructive md:self-center"
-                  disabled={routesState.length <= 1}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
               </div>
             )
           })}
@@ -331,6 +461,17 @@ export function UsersTable({ users, providers, onAdd, onUpdate, onDelete }: User
     </div>
   )
 
+  const updateRouteState = (index: number, updater: (route: RouteFormEntry) => RouteFormEntry) => {
+    setRoutes((prev) => {
+      if (!prev[index]) {
+        return prev
+      }
+      const next = [...prev]
+      next[index] = updater(cloneRoute(prev[index]))
+      return next
+    })
+  }
+
   const handleAddRoute = () => {
     if (serviceOptions.length === 0 || routes.length >= serviceOptions.length) {
       return
@@ -338,141 +479,88 @@ export function UsersTable({ users, providers, onAdd, onUpdate, onDelete }: User
     setRoutes((prev) => [...prev, createEmptyRoute()])
   }
 
-  const handleUpdateRoute = (index: number, field: keyof RouteFormEntry, value: string) => {
-    setRoutes((prev) => {
-      const next = [...prev]
-      const updated = { ...next[index] }
-      if (field === "service") {
-        updated.service = value
-        updated.provider = ""
-        updated.key = ""
-      } else if (field === "provider") {
-        updated.provider = value
-        updated.key = ""
-      } else {
-        updated.key = value
-      }
-      next[index] = updated
-      return next
-    })
-  }
-
-  const handleRemoveRoute = (index: number) => {
-    setRoutes((prev) => {
-      if (prev.length <= 1) {
-        return [createEmptyRoute()]
-      }
-      return prev.filter((_, i) => i !== index)
-    })
-  }
-
-  const getDraftRoutes = (user: User): RouteFormEntry[] => routesDrafts[user.name] ?? normalizeRoutesFromUser(user)
-
-  const setDraftRoutesForUser = (userName: string, nextRoutes: RouteFormEntry[]) => {
-    setRoutesDrafts((prev) => ({
-      ...prev,
-      [userName]: nextRoutes,
-    }))
-  }
-
-  const clearDraftForUser = (userName: string) => {
-    setRoutesDrafts((prev) => {
-      if (!(userName in prev)) {
-        return prev
-      }
-      const next = { ...prev }
-      delete next[userName]
-      return next
-    })
-    setRouteErrors((prev) => {
-      if (!(userName in prev)) {
-        return prev
-      }
-      const next = { ...prev }
-      delete next[userName]
-      return next
-    })
-    setSavingUsers((prev) => {
-      if (!(userName in prev)) {
-        return prev
-      }
-      const next = { ...prev }
-      delete next[userName]
-      return next
-    })
-  }
-
-  const updateDraftRoutesForUser = (user: User, updater: (current: RouteFormEntry[]) => RouteFormEntry[]) => {
-    setRoutesDrafts((prev) => {
-      const current = prev[user.name] ?? normalizeRoutesFromUser(user)
-      const currentCopy = current.map((route) => ({ ...route }))
-      const next = updater(currentCopy)
-      return {
-        ...prev,
-        [user.name]: next,
-      }
-    })
-  }
-
-  const setRouteErrorsForUser = (userName: string, errors: string[]) => {
-    setRouteErrors((prev) => {
-      const next = { ...prev }
-      if (errors.length === 0) {
-        delete next[userName]
-      } else {
-        next[userName] = errors
-      }
-      return next
-    })
-  }
-
-  const setSavingForUser = (userName: string, saving: boolean) => {
-    setSavingUsers((prev) => ({
-      ...prev,
-      [userName]: saving,
-    }))
-  }
-
-  const handleSaveRouteChanges = async (user: User) => {
-    const draftRoutes = getDraftRoutes(user)
-    const errors = validateRoutes(draftRoutes)
-    if (errors.length > 0) {
-      setRouteErrorsForUser(user.name, errors)
-      return
-    }
-
-    setRouteErrorsForUser(user.name, [])
-    setSavingForUser(user.name, true)
-    try {
-      const servicesMap = routesToServicesMap(draftRoutes)
-      await Promise.resolve(
-        onUpdate(user.name, {
-          ...user,
-          services: servicesMap,
-        })
-      )
-      clearDraftForUser(user.name)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to update routes"
-      setRouteErrorsForUser(user.name, [message])
-    } finally {
-      setSavingUsers((prev) => {
-        if (!(user.name in prev)) {
+  const routeHandlersForCreate = {
+    changeService: (index: number, value: string) =>
+      updateRouteState(index, (route) => applyServiceChange(route, value)),
+    changeStrategy: (index: number, value: string) =>
+      updateRouteState(index, (route) => applyStrategyChange(route, value)),
+    updateCandidate: (
+      index: number,
+      candidateIndex: number,
+      updater: (candidate: CandidateFormEntry) => CandidateFormEntry
+    ) => updateRouteState(index, (route) => applyCandidateUpdate(route, candidateIndex, updater)),
+    addCandidate: (index: number) => updateRouteState(index, (route) => applyCandidateAdd(route)),
+    removeCandidate: (index: number, candidateIndex: number) =>
+      updateRouteState(index, (route) => applyCandidateRemove(route, candidateIndex)),
+    removeRoute: (index: number) =>
+      setRoutes((prev) => {
+        if (prev.length <= 1) {
           return prev
         }
-        const next = { ...prev }
-        delete next[user.name]
-        return next
-      })
-    }
+        const next = prev.filter((_, i) => i !== index)
+        return next.length === 0 ? [createEmptyRoute()] : next
+      }),
   }
 
-  const handleResetRoutes = (user: User) => {
-    clearDraftForUser(user.name)
+  const cloneCandidate = (candidate: CandidateFormEntry): CandidateFormEntry => ({ ...candidate })
+
+  const cloneRoute = (route: RouteFormEntry): RouteFormEntry => ({
+    ...route,
+    candidates: route.candidates.map(cloneCandidate),
+  })
+
+  const applyServiceChange = (route: RouteFormEntry, service: string): RouteFormEntry => {
+    const next = cloneRoute(route)
+    next.service = service
+    next.candidates = [createDefaultCandidateForService(service)]
+    return next
+  }
+
+  const applyStrategyChange = (route: RouteFormEntry, strategy: string): RouteFormEntry => {
+    const next = cloneRoute(route)
+    next.strategy = strategy || "round_robin"
+    return next
+  }
+
+  const applyCandidateUpdate = (
+    route: RouteFormEntry,
+    candidateIndex: number,
+    updater: (candidate: CandidateFormEntry) => CandidateFormEntry
+  ): RouteFormEntry => {
+    const next = cloneRoute(route)
+    const currentCandidate = next.candidates[candidateIndex] ?? createEmptyCandidate()
+    next.candidates[candidateIndex] = updater(cloneCandidate(currentCandidate))
+    return next
+  }
+
+  const applyCandidateAdd = (route: RouteFormEntry): RouteFormEntry => {
+    const next = cloneRoute(route)
+    const candidate = route.service ? createDefaultCandidateForService(route.service) : createEmptyCandidate()
+    next.candidates = [...next.candidates, candidate]
+    return next
+  }
+
+  const applyCandidateRemove = (route: RouteFormEntry, candidateIndex: number): RouteFormEntry => {
+    const next = cloneRoute(route)
+    if (next.candidates.length <= 1) {
+      return next
+    }
+    next.candidates = next.candidates.filter((_, i) => i !== candidateIndex)
+    return next
+  }
+
+  const handleUpdateRouteForUser = async (user: User, serviceType: string, updatedRoute: UserServiceRoute) => {
+    const nextServices = { ...user.services }
+    nextServices[serviceType] = updatedRoute
+    await Promise.resolve(
+      onUpdate(user.name, {
+        ...user,
+        services: nextServices,
+      })
+    )
   }
 
   const handleDeleteUser = async (name: string) => {
-    clearDraftForUser(name)
     await Promise.resolve(onDelete(name))
   }
 
@@ -497,21 +585,15 @@ export function UsersTable({ users, providers, onAdd, onUpdate, onDelete }: User
 
     setIsSubmitting(true)
     try {
-      const servicesMap: User["services"] = {}
-      routes.forEach((route) => {
-        servicesMap[route.service] = {
-          provider_name: route.provider,
-          provider_key_name: route.key,
-        }
-      })
+      const servicesMap = routesToServicesMap(routes)
 
-    await Promise.resolve(
-      onAdd({
-        name: formData.name.trim(),
-        api_key: formData.api_key.trim(),
-        services: servicesMap,
-      })
-    )
+      await Promise.resolve(
+        onAdd({
+          name: formData.name.trim(),
+          api_key: formData.api_key.trim(),
+          services: servicesMap,
+        })
+      )
       setFormData({ name: "", api_key: generateApiKey(), services: {} })
       setRoutes([createEmptyRoute()])
       setErrors([])
@@ -581,8 +663,7 @@ export function UsersTable({ users, providers, onAdd, onUpdate, onDelete }: User
               </div>
               {renderRoutesForm(
                 routes,
-                handleUpdateRoute,
-                handleRemoveRoute,
+                routeHandlersForCreate,
                 handleAddRoute,
                 serviceOptions.length === 0 || routes.length >= serviceOptions.length
               )}
@@ -617,49 +698,7 @@ export function UsersTable({ users, providers, onAdd, onUpdate, onDelete }: User
           <tbody>
             {users.map((user) => {
               const isVisible = visibleKeys.has(user.name)
-              const draftRoutes = getDraftRoutes(user)
-              const disableAddRoute = serviceOptions.length === 0 || draftRoutes.length >= serviceOptions.length
-              const userErrors = routeErrors[user.name] ?? []
-              const isSaving = savingUsers[user.name] ?? false
-
-              const addRouteForUser = () => {
-                if (disableAddRoute) {
-                  return
-                }
-                updateDraftRoutesForUser(user, (current) => [...current, createEmptyRoute()])
-              }
-
-              const updateRouteForUser = (index: number, field: keyof RouteFormEntry, value: string) => {
-                updateDraftRoutesForUser(user, (current) => {
-                  const next = current.map((route) => ({ ...route }))
-                  const target = next[index] ?? createEmptyRoute()
-                  if (field === "service") {
-                    target.service = value
-                    target.provider = ""
-                    target.key = ""
-                  } else if (field === "provider") {
-                    target.provider = value
-                    target.key = ""
-                  } else {
-                    target.key = value
-                  }
-                  next[index] = target
-                  return next
-                })
-              }
-
-              const removeRouteForUser = (index: number) => {
-                updateDraftRoutesForUser(user, (current) => {
-                  if (current.length <= 1) {
-                    return [createEmptyRoute()]
-                  }
-                  return current.filter((_, i) => i !== index)
-                })
-              }
-
-              const resetRoutesForUser = () => {
-                handleResetRoutes(user)
-              }
+              const servicesEntries = Object.entries(user.services ?? {})
 
               return (
                 <Fragment key={user.name}>
@@ -732,36 +771,22 @@ export function UsersTable({ users, providers, onAdd, onUpdate, onDelete }: User
                   <tr className="border-b border-border/60 bg-secondary/10">
                     <td colSpan={3} className="px-6 py-4">
                       <div className="space-y-4">
-                        {renderRoutesForm(
-                          draftRoutes,
-                          updateRouteForUser,
-                          removeRouteForUser,
-                          addRouteForUser,
-                          disableAddRoute
+                        {servicesEntries.map(([serviceType, route]) => (
+                          <ServiceRouteCard
+                            key={serviceType}
+                            serviceType={serviceType}
+                            route={route}
+                            userApiKey={user.api_key}
+                            providers={providers}
+                            onUpdateRoute={(targetService, updatedRoute) =>
+                              handleUpdateRouteForUser(user, targetService, updatedRoute)
+                            }
+                          />
+                        ))}
+
+                        {servicesEntries.length === 0 && (
+                          <p className="text-sm text-muted-foreground">该用户尚未配置任何服务路由。</p>
                         )}
-                        {userErrors.length > 0 && (
-                          <div className="bg-destructive/10 border border-destructive/20 rounded-sm p-3">
-                            <p className="text-sm font-medium text-destructive mb-1">Please resolve the following:</p>
-                            <ul className="text-sm text-destructive space-y-1 list-disc list-inside">
-                              {userErrors.map((error, index) => (
-                                <li key={index}>{error}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        <div className="flex justify-end gap-2">
-                          <Button variant="outline" onClick={resetRoutesForUser} disabled={isSaving}>
-                            Reset
-                          </Button>
-                          <Button
-                            onClick={() => {
-                              void handleSaveRouteChanges(user)
-                            }}
-                            disabled={isSaving || serviceOptions.length === 0}
-                          >
-                            {isSaving ? "Saving..." : "Save Routes"}
-                          </Button>
-                        </div>
                       </div>
                     </td>
                   </tr>
