@@ -1,0 +1,16 @@
+{
+  "name": "piapi",
+  "version": "0.0.0-development",
+  "private": true,
+  "description": "AI Provider API Gateway",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/prehisle/piapi.git"
+  },
+  "devDependencies": {
+    "semantic-release": "^23.0.0",
+    "@semantic-release/commit-analyzer": "^11.0.0",
+    "@semantic-release/release-notes-generator": "^12.0.0",
+    "@semantic-release/github": "^9.0.0"
+  }
+}

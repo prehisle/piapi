@@ -1,0 +1,51 @@
+project_name: piapi
+
+before:
+  hooks:
+    # 关键：前端必须在Go编译前构建完成
+    - bash -c 'cd web/admin && corepack enable && pnpm install --frozen-lockfile'
+    - bash -c 'cd web/admin && NEXT_DISABLE_TURBOPACK=1 pnpm build'
+    - bash -c 'rm -rf internal/adminui/dist && cp -r web/admin/out internal/adminui/dist'
+
+builds:
+  - id: piapi
+    binary: piapi
+    main: ./cmd/piapi
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      # 注入版本信息（模块路径是piapi）
+      - -X 'piapi/internal/version.Version={{ .Tag }}'
+      - -X 'piapi/internal/version.Commit={{ .FullCommit }}'
+      - -X 'piapi/internal/version.Date={{ .Date }}'
+      - -s -w
+
+archives:
+  - id: piapi-archives
+    name_template: "{{ .ProjectName }}-{{ .Tag }}-{{ .Os }}-{{ .Arch }}"
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - config.yaml.example
+      - README.md
+
+changelog:
+  disable: true  # semantic-release负责管理changelog
+
+release:
+  github:
+    owner: prehisle
+    name: piapi
+  prerelease: auto

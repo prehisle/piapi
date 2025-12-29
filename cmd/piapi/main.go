@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -19,12 +20,19 @@ import (
 	"piapi/internal/logging"
 	"piapi/internal/metrics"
 	"piapi/internal/server"
+	"piapi/internal/version"
 )
 
 func main() {
+	showVersion := flag.Bool("version", false, "show version information")
 	configPath := flag.String("config", "config.yaml", "path to config.yaml")
 	listenAddr := flag.String("listen", ":9200", "HTTP listen address")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(version.Full())
+		os.Exit(0)
+	}
 
 	baseLogger, err := logging.NewLogger()
 	if err != nil {
@@ -48,7 +56,7 @@ func main() {
 	if err := manager.LoadFromFile(*configPath); err != nil {
 		sugar.Fatalw("failed to load config", "path", *configPath, "error", err)
 	}
-	sugar.Infow("configuration loaded", "path", *configPath)
+	sugar.Infow("piapi starting", "version", version.BuildInfo(), "config", *configPath)
 
 	rootCtx, rootCancel := context.WithCancel(context.Background())
 	defer rootCancel()

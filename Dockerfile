@@ -19,6 +19,11 @@ RUN pnpm build
 FROM golang:1.23 AS builder
 WORKDIR /workspace
 
+# 接收版本参数
+ARG VERSION=dev
+ARG COMMIT=none
+ARG DATE=unknown
+
 # Copy Go module files
 COPY go.mod go.sum ./
 RUN go mod download
@@ -29,8 +34,13 @@ COPY . .
 # Copy frontend build output
 COPY --from=frontend-builder /workspace/web/admin/out /workspace/internal/adminui/dist
 
-# Build Go binary
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /piapi ./cmd/piapi
+# Build Go binary with version injection
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-X 'piapi/internal/version.Version=${VERSION}' \
+              -X 'piapi/internal/version.Commit=${COMMIT}' \
+              -X 'piapi/internal/version.Date=${DATE}' \
+              -s -w" \
+    -o /piapi ./cmd/piapi
 
 # Stage 3: Runtime
 FROM gcr.io/distroless/base-debian12:nonroot

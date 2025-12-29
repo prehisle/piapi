@@ -64,12 +64,8 @@ jobs:
           retention-days: 1
 
   docker:
-    if: github.event_name != 'pull_request'
-    needs: build
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
 
     steps:
       - name: Checkout repository
@@ -78,70 +74,34 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=tag
-            type=sha
-
-      - name: Build and push image
+      - name: Build Docker image (dry-run)
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          # Use GitHub Actions cache for faster builds
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          push: false
+          tags: piapi:pr-${{ github.event.pull_request.number }}
 
-  package:
-    if: github.event_name != 'pull_request'
-    needs: build
+  release:
     runs-on: ubuntu-latest
-
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # Download pre-built admin UI from build job
-      - name: Download admin UI artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
         with:
-          name: admin-ui-dist
-          path: internal/adminui/dist/
+          fetch-depth: 0  # semantic-release需要完整历史
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-node@v4
         with:
-          go-version-file: go.mod
+          node-version: 20
 
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Build release artifacts
-        run: make release-skip-admin
-
-      - name: Upload release artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: piapi-binaries-${{ github.sha }}
-          path: dist/releases/*
+      - name: Run semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release
