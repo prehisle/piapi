@@ -200,6 +200,10 @@ PIAPI_ADMIN_TOKEN='super-secret-token' go run ./cmd/piapi --config config.yaml -
 * `PUT /piadmin/api/config/raw`：提交完整 YAML 内容以原子方式覆盖配置文件。请求体必须通过后端校验，写入失败会自动回滚到旧配置。
 * `GET /piadmin/api/stats/routes?apiKey=<user_key>&service=<service>`：返回指定用户/服务的候选运行态统计（健康状态、请求/错误次数、错误率等）。
 
+**API 兼容性说明**：
+
+`/piadmin/api/stats/routes` 接口的响应字段可能随版本演进而扩展。自 0.3.0 起可能包含 `smoothed_error_rate` 和 `effective_weight` 字段（在 adaptive_rr 策略下更有意义）。客户端实现时必须采用宽松 JSON 解析策略，忽略未知字段，以确保前向兼容性。如使用强类型反序列化，建议将新增字段定义为可选。
+
 更新成功后，后端会立即重新加载配置，现有 watcher 和运行时状态会同步刷新。建议在 CI/CD 中通过自定义脚本调用这些接口并记录审计日志。
 
 ### 6. 管理后台 UI

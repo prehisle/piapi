@@ -490,8 +490,7 @@ func selectCandidate(svc *resolvedUserService) *resolvedCandidate {
 	now := time.Now().UnixNano()
 	eligible := make([]*resolvedCandidate, 0, len(svc.candidates))
 	origIdx := make([]int, 0, len(svc.candidates))
-	weights := make([]float64, 0, len(svc.candidates))
-	totalWeight := 0.0
+
 	for i, c := range svc.candidates {
 		if !c.enabled {
 			continue
@@ -502,30 +501,12 @@ func selectCandidate(svc *resolvedUserService) *resolvedCandidate {
 		}
 		eligible = append(eligible, c)
 		origIdx = append(origIdx, i)
-		w := float64(c.weight)
-		if w <= 0 {
-			w = 1
-		}
-		if svc.strategy == strategyAdaptiveRR {
-			errRate := atomicLoadFloat64(&c.adaptiveErrorRate)
-			if errRate < 0 {
-				errRate = 0
-			}
-			if errRate > 1 {
-				errRate = 1
-			}
-			quality := 1 - errRate
-			if quality < adaptiveQualityFloor {
-				quality = adaptiveQualityFloor
-			}
-			w = w * quality
-		}
-		weights = append(weights, w)
-		totalWeight += w
 	}
 	if len(eligible) == 0 {
 		return nil
 	}
+
+	// sticky_healthy: prefer last selected eligible candidate
 	if svc.strategy == strategyStickyHealthy {
 		sticky := int(atomic.LoadInt32(&svc.stickyIndex))
 		if sticky >= 0 {
@@ -540,22 +521,73 @@ func selectCandidate(svc *resolvedUserService) *resolvedCandidate {
 		atomic.StoreInt32(&svc.stickyIndex, int32(origIdx[0]))
 		return chosen
 	}
-	if (svc.strategy == strategyWeightedRR || svc.strategy == strategyAdaptiveRR) && totalWeight > 0 {
-		idx := atomic.AddUint64(&svc.rrCounter, 1) - 1
-		pos := math.Mod(float64(idx), totalWeight)
-		acc := 0.0
-		for i, c := range eligible {
-			acc += weights[i]
-			if pos < acc {
-				if svc.strategy == strategyStickyHealthy {
-					atomic.StoreInt32(&svc.stickyIndex, int32(origIdx[i]))
-				}
-				return c
+
+	// weighted_rr: use integer path for predictable behavior
+	if svc.strategy == strategyWeightedRR {
+		weightsInt := make([]int, 0, len(eligible))
+		totalWeightInt := 0
+		for _, c := range eligible {
+			w := c.weight
+			if w <= 0 {
+				w = 1
 			}
+			weightsInt = append(weightsInt, w)
+			totalWeightInt += w
 		}
-		// Fallback (should not happen)
-		return eligible[len(eligible)-1]
+		if totalWeightInt > 0 {
+			idx := atomic.AddUint64(&svc.rrCounter, 1) - 1
+			pos := int(idx % uint64(totalWeightInt))
+			acc := 0
+			for i, c := range eligible {
+				acc += weightsInt[i]
+				if pos < acc {
+					return c
+				}
+			}
+			// Fallback (should not happen)
+			return eligible[len(eligible)-1]
+		}
 	}
+
+	// adaptive_rr: use float path for quality-adjusted weights
+	if svc.strategy == strategyAdaptiveRR {
+		weightsFloat := make([]float64, 0, len(eligible))
+		totalWeightFloat := 0.0
+		for _, c := range eligible {
+			w := float64(c.weight)
+			if w <= 0 {
+				w = 1
+			}
+			errRate := atomicLoadFloat64(&c.adaptiveErrorRate)
+			if errRate < 0 {
+				errRate = 0
+			}
+			if errRate > 1 {
+				errRate = 1
+			}
+			quality := 1 - errRate
+			if quality < adaptiveQualityFloor {
+				quality = adaptiveQualityFloor
+			}
+			w = w * quality
+			weightsFloat = append(weightsFloat, w)
+			totalWeightFloat += w
+		}
+		if totalWeightFloat > 0 {
+			idx := atomic.AddUint64(&svc.rrCounter, 1) - 1
+			pos := math.Mod(float64(idx), totalWeightFloat)
+			acc := 0.0
+			for i, c := range eligible {
+				acc += weightsFloat[i]
+				if pos < acc {
+					return c
+				}
+			}
+			// Fallback (should not happen)
+			return eligible[len(eligible)-1]
+		}
+	}
+
 	// Default round_robin
 	idx := atomic.AddUint64(&svc.rrCounter, 1) - 1
 	return eligible[int(idx%uint64(len(eligible)))]

@@ -510,3 +510,109 @@ func writeTempConfig(t *testing.T, contents string) string {
 	}
 	return path
 }
+
+// TestWeightedRRIntegerPath verifies that weighted_rr uses integer arithmetic
+// for predictable and precise weight distribution, avoiding float precision issues.
+func TestWeightedRRIntegerPath(t *testing.T) {
+	yaml := `
+providers:
+  - name: provider-alpha
+    apiKeys:
+      key-a: test-key-a
+    services:
+      - type: codex
+        baseUrl: https://alpha.example.com/v1
+  - name: provider-beta
+    apiKeys:
+      key-b: test-key-b
+    services:
+      - type: codex
+        baseUrl: https://beta.example.com/v1
+  - name: provider-gamma
+    apiKeys:
+      key-c: test-key-c
+    services:
+      - type: codex
+        baseUrl: https://gamma.example.com/v1
+users:
+  - name: test-user
+    apiKey: test-key
+    services:
+      codex:
+        strategy: weighted_rr
+        candidates:
+          - providerName: provider-alpha
+            providerKeyName: key-a
+            weight: 5
+          - providerName: provider-beta
+            providerKeyName: key-b
+            weight: 3
+          - providerName: provider-gamma
+            providerKeyName: key-c
+            weight: 2
+`
+
+	path := writeTempConfig(t, yaml)
+	manager := NewManager()
+	if err := manager.LoadFromFile(path); err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	// Total weight is 5+3+2=10, so the cycle should repeat every 10 requests
+	// Expected pattern: alpha(5x), beta(3x), gamma(2x)
+	totalWeight := 10
+	iterations := 1000 // Test multiple cycles
+
+	counts := map[string]int{
+		"provider-alpha": 0,
+		"provider-beta":  0,
+		"provider-gamma": 0,
+	}
+
+	for i := 0; i < iterations; i++ {
+		route, err := manager.Resolve("test-key", "codex")
+		if err != nil {
+			t.Fatalf("resolve at iteration %d: %v", i, err)
+		}
+		counts[route.Provider.Name]++
+	}
+
+	// With integer arithmetic, the distribution should be exact
+	expectedAlpha := (iterations * 5) / totalWeight
+	expectedBeta := (iterations * 3) / totalWeight
+	expectedGamma := (iterations * 2) / totalWeight
+
+	if counts["provider-alpha"] != expectedAlpha {
+		t.Errorf("alpha: expected %d, got %d", expectedAlpha, counts["provider-alpha"])
+	}
+	if counts["provider-beta"] != expectedBeta {
+		t.Errorf("beta: expected %d, got %d", expectedBeta, counts["provider-beta"])
+	}
+	if counts["provider-gamma"] != expectedGamma {
+		t.Errorf("gamma: expected %d, got %d", expectedGamma, counts["provider-gamma"])
+	}
+
+	// Verify the exact sequence for one full cycle
+	manager2 := NewManager()
+	if err := manager2.LoadFromFile(path); err != nil {
+		t.Fatalf("load config for sequence test: %v", err)
+	}
+
+	expectedCycle := []string{
+		"provider-alpha", "provider-alpha", "provider-alpha", "provider-alpha", "provider-alpha",
+		"provider-beta", "provider-beta", "provider-beta",
+		"provider-gamma", "provider-gamma",
+	}
+
+	for i := 0; i < totalWeight*2; i++ { // Test 2 full cycles
+		route, err := manager2.Resolve("test-key", "codex")
+		if err != nil {
+			t.Fatalf("resolve for sequence at %d: %v", i, err)
+		}
+		expected := expectedCycle[i%totalWeight]
+		if route.Provider.Name != expected {
+			t.Errorf("sequence mismatch at position %d: expected %s, got %s",
+				i, expected, route.Provider.Name)
+		}
+	}
+}
